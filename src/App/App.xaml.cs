@@ -59,8 +59,11 @@ public partial class App : Application
         if (demo) dataDir = Path.Combine(dataDir, shot ? "shot" : "demo");
         if (shot && Directory.Exists(dataDir)) Directory.Delete(dataDir, true);
 
-        IDeviceSource source = demo ? new DemoDeviceSource() : new WindowsDeviceSource();
+        Settings? live = null; // the Logitech reader checks the user's on/off switch each time it runs
+        IDeviceSource source = demo ? new DemoDeviceSource()
+            : new CompositeSource(new WindowsDeviceSource(), new LogitechSource(() => live?.LogitechEnabled ?? true));
         _c = new AppController(source, dataDir, demo ? null : new BlePodsListener());
+        live = _c.Settings;
         Theme.Apply(_c.Settings.Accent);
 
         if (shot)

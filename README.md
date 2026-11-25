@@ -5,14 +5,15 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 
 - Battery % for Bluetooth mice, keyboards, headphones, earbuds, controllers and phones
 - Left, right and case levels for AirPods and Beats earbuds, read from the battery signal they broadcast
+- Battery level for Logitech wireless mice and keyboards on a Lightspeed, Unifying or Bolt USB receiver
 - Pin devices to show them in a strip on the taskbar with a battery gauge and percentage, or as numbered tray icons if you prefer (yellow under 50%, red under 20%)
 - Hover any tray icon to see every connected device
 - Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
 
-Bluetooth only. Devices that connect through a 2.4 GHz USB dongle are not supported, and a device that does not
-report a level to Windows shows "No battery info".
+Other devices that connect through a 2.4 GHz USB dongle are not supported, and a device that does not report a level
+shows "No battery info".
 
 ## Install (one command)
 
@@ -54,7 +55,11 @@ This produces `dist\BTBatteryIndicator-win-x64.zip`. `.\build.ps1` on its own bu
 The app reads the battery value Windows already keeps for each paired Bluetooth device (the same number shown in
 Windows Settings). It only reads; it never connects to, pairs, or changes a device. Apple earbuds are the exception to
 "Windows already has it": they broadcast their levels instead, so while they are connected the app listens for that
-broadcast for a few seconds at a time. Listening is receive-only. Settings and history are plain
+broadcast for a few seconds at a time. Listening is receive-only.
+
+Logitech receiver devices are the one case where the app sends anything: every two minutes it asks the device for its
+battery level using Logitech's own message format. It never changes a device setting, and the gear panel has a switch
+to turn this off. Settings and history are plain
 JSON files in `%LOCALAPPDATA%\BTBatteryIndicator`.
 
 ## License

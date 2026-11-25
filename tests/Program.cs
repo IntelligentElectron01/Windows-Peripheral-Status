@@ -42,6 +42,18 @@ if (args.Length > 0 && args[0] == "pods")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "logi")
+{
+    // Asks Logitech wireless devices for their name and battery level and prints what came back.
+    var logi = new LogitechSource();
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var found = logi.Scan();
+    Console.WriteLine($"poll took {sw.ElapsedMilliseconds} ms; devices: {found.Count}");
+    foreach (var line in logi.Trace) Console.WriteLine("trace: " + line);
+    foreach (var d in found) Console.WriteLine($"device: {d.Name} | {d.Kind} | connected={d.Connected} | {Levels.Text(d.Battery)} | charging={d.Charging} | id {d.Id}");
+    return 0;
+}
+
 string temp = Path.Combine(Path.GetTempPath(), "BTBI-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(temp);
 var t0 = new DateTime(2026, 1, 10, 12, 0, 0, DateTimeKind.Utc);
@@ -187,6 +199,42 @@ Section("R1 Apple earbuds");
     var two = tr.Enrich([Buds("8", 0x1234), Buds("9", 0x5678)], t0.AddMinutes(2));
     Check(two.All(d => d.Battery is null), "two candidates and no exact match: no guessing");
     Check(BlePodsListener.IID_ReceivedHandler == new Guid("90EB4ECA-D465-5EA0-A61C-033C8C5ECEF2"), "callback identifier derived correctly");
+}
+
+// ---------------------------------------------------------------------------------------------
+Section("R1 Logitech receiver devices");
+{
+    var req = Hidpp.BuildRequest(1, 0x06, 0, 0x10, 0x01);
+    Check(req.Length == 20 && req[0] == 0x11 && req[1] == 1 && req[2] == 0x06 && req[3] == Hidpp.SoftwareId && req[4] == 0x10 && req[5] == 0x01, "request layout");
+    Check(Hidpp.BuildRequest(1, 0x06, 1)[3] == (0x10 | Hidpp.SoftwareId), "function number goes in the upper half of byte 3");
+    byte[] Rep(params byte[] b) => [.. b, .. new byte[20 - b.Length]];
+    Check(Hidpp.Match(req, Rep(0x11, 1, 0x06, Hidpp.SoftwareId, 0x0F, 0xA0)) == Hidpp.Reply.Ok, "matching reply accepted");
+    Check(Hidpp.Match(req, Rep(0x11, 1, 0x06, 0x01, 0x0F)) == Hidpp.Reply.NotOurs, "reply tagged for other software ignored");
+    Check(Hidpp.Match(req, Rep(0x11, 2, 0x06, Hidpp.SoftwareId)) == Hidpp.Reply.NotOurs, "reply from a different device ignored");
+    Check(Hidpp.Match(req, Rep(0x11, 1, 0xFF, 0x06, Hidpp.SoftwareId, 0x05)) == Hidpp.Reply.Error, "error reply recognised");
+    Check(Hidpp.Match(req, [0x11, 1]) == Hidpp.Reply.NotOurs, "truncated report ignored");
+
+    Check(Hidpp.PercentFromMillivolts(4200) == 100 && Hidpp.PercentFromMillivolts(4186) == 100, "full voltage = 100%");
+    Check(Hidpp.PercentFromMillivolts(3811) == 50 && Hidpp.PercentFromMillivolts(3717) == 20, "curve points");
+    Check(Hidpp.PercentFromMillivolts(3835) is > 50 and < 60, "between points is interpolated");
+    Check(Hidpp.PercentFromMillivolts(3400) == 0, "below the curve = 0%");
+    Check(Enumerable.Range(3400, 900).Select(Hidpp.PercentFromMillivolts).Zip(Enumerable.Range(3401, 900).Select(Hidpp.PercentFromMillivolts)).All(p => p.Second >= p.First), "curve never goes down as voltage rises");
+    Check(Hidpp.DecodeVoltage([0x0F, 0xA0, 0x00]) is { Percent: > 80 and < 90, Charging: false }, "4000 mV decoded, not charging");
+    Check(Hidpp.DecodeVoltage([0x10, 0x5A, 0x80]) is { Percent: 100, Charging: true }, "charging flag decoded");
+    Check(Hidpp.DecodeVoltage([0x00, 0x00, 0x00]) is null && Hidpp.DecodeVoltage([0x0F]) is null, "nonsense voltage rejected");
+    Check(Hidpp.DecodeUnified([73, 0x04, 0x00]) is { Percent: 73, Charging: false }, "percentage feature decoded");
+    Check(Hidpp.DecodeUnified([0, 0x02, 0x01]) is { Percent: 20, Charging: true }, "coarse level used when no percentage is given");
+    Check(Hidpp.DecodeUnified([0, 0x00, 0x00]) is null, "no information -> null");
+    Check(Hidpp.DecodeStatus([55, 50, 0]) is { Percent: 55, Charging: false } && Hidpp.DecodeStatus([55, 50, 1]) is { Charging: true }, "older battery feature decoded");
+    Check(Hidpp.KindFromType(0) == DeviceKind.Keyboard && Hidpp.KindFromType(3) == DeviceKind.Mouse, "device type mapped");
+
+    Check(new LogitechSource(() => false).Scan().Count == 0, "switched off: sends nothing and lists nothing");
+    var ok = new DemoDeviceSource();
+    Check(new CompositeSource(ok, new Throwing()).Scan().Count == ok.Scan().Count, "one reader failing does not hide the other's devices");
+    bool threw = false;
+    try { new CompositeSource(new Throwing()).Scan(); } catch (InvalidOperationException) { threw = true; }
+    Check(threw, "every reader failing is reported as an error");
+    Check(new Settings().LogitechEnabled, "Logitech reading on by default");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -383,3 +431,5 @@ Section("R11 fully local");
 try { Directory.Delete(temp, true); } catch { }
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;
+
+sealed class Throwing : IDeviceSource { public IReadOnlyList<DeviceReading> Scan() => throw new InvalidOperationException("reader failed"); }

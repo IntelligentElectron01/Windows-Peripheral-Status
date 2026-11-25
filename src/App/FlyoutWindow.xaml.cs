@@ -139,6 +139,7 @@ public partial class FlyoutWindow : Window
         ThresholdText.Text = $"Notify at {s.LowBatteryThreshold}%";
         AccentBlue.IsChecked = s.Accent != "System";
         AccentSystem.IsChecked = s.Accent == "System";
+        LogitechToggle.IsChecked = s.LogitechEnabled;
         PinTaskbar.IsChecked = s.PinnedDisplay != "Tray";
         PinTray.IsChecked = s.PinnedDisplay == "Tray";
         UpdateSyncText();
@@ -158,7 +159,8 @@ public partial class FlyoutWindow : Window
             Name = name,
             Glyph = d is { Connected: true, Pods: not null } ? "" : GlyphFor(d.Kind),
             Icon = d is { Connected: true, Pods: { } shown } ? PodIcons.For(shown.View) : null,
-            LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? pods.Short() : Levels.Text(d.Battery),
+            LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? pods.Short()
+                      : d.Charging && d.Battery is not null ? $"⚡ {d.Battery}%" : Levels.Text(d.Battery),
             Level = live ? d.Battery!.Value : 0,
             BarVisibility = live ? Visibility.Visible : Visibility.Collapsed,
             BarBrush = levelBrush,
@@ -167,7 +169,7 @@ public partial class FlyoutWindow : Window
             PinGlyph = pinned ? "" : "",
             PinTip = pinned ? "Unpin" : _c.Settings.PinnedDisplay == "Tray" ? "Pin to the tray as its own icon" : "Pin to the taskbar",
             RowTip = d is { Connected: true, Pods: { } p } ? $"{name}: {p.Describe()}\nClick for battery history"
-                   : $"{name} — click for battery history",
+                   : $"{name}{(d is { Connected: true, Charging: true } ? " (charging)" : "")} — click for battery history",
             Fade = d.Connected ? 1 : 0.55,
         };
     }
@@ -271,6 +273,12 @@ public partial class FlyoutWindow : Window
         string mode = AccentSystem.IsChecked == true ? "System" : "Blue";
         _c.Change(s => s.Accent = mode);
         Theme.Apply(mode);
+    }
+
+    async void LogitechToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _c.Change(s => s.LogitechEnabled = LogitechToggle.IsChecked == true);
+        await _c.RefreshAsync();
     }
 
     void PinMode_Click(object sender, RoutedEventArgs e)

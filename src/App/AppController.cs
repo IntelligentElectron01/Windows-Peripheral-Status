@@ -25,6 +25,7 @@ public sealed class AppController
     public Settings Settings { get; }
     public HistoryStore History { get; }
     public DemoDeviceSource? Demo => _source as DemoDeviceSource;
+    public bool IsDemo => Demo is not null;
     public IReadOnlyList<DeviceReading> Devices { get; private set; } = [];
     public DateTime? LastSync { get; private set; }
     public string? Error { get; private set; }

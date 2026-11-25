@@ -22,6 +22,8 @@ public sealed class Settings
     public string Accent { get; set; } = "Blue";
     /// <summary>Where pinned devices show: "Taskbar" (a strip on the taskbar, default) or "Tray" (one tray icon each).</summary>
     public string PinnedDisplay { get; set; } = "Taskbar";
+    /// <summary>Ask Logitech wireless devices on a USB receiver for their battery level (the one reader that sends messages).</summary>
+    public bool LogitechEnabled { get; set; } = true;
     public Dictionary<string, DevicePrefs> Devices { get; set; } = new();
 
     public DevicePrefs For(string id)

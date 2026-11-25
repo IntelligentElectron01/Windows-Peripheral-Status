@@ -9,6 +9,8 @@ public sealed record DeviceReading(string Id, string Name, DeviceKind Kind, bool
     public int? AppleModel { get; init; }
     /// <summary>Per-bud and case levels, when they came from an earbud broadcast rather than from Windows.</summary>
     public PodLevels? Pods { get; init; }
+    /// <summary>True when the device says it is on charge (only some device types report this).</summary>
+    public bool Charging { get; init; }
 }
 
 public interface IDeviceSource

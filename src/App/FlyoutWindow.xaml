@@ -108,6 +108,12 @@
               <RadioButton x:Name="PinTray" Style="{StaticResource Chip}" Content="As tray icons" GroupName="pinmode" Click="PinMode_Click"/>
             </StackPanel>
           </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Logitech wireless devices" VerticalAlignment="Center"
+                       ToolTip="Asks Logitech mice and keyboards on a USB receiver for their battery level every 2 minutes. This is the only reader that sends messages to a device."/>
+            <CheckBox x:Name="LogitechToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="LogitechToggle_Click" AutomationProperties.Name="Logitech wireless devices"/>
+          </Grid>
           <StackPanel x:Name="HiddenPanel" Margin="16,12,8,0">
             <TextBlock Text="Hidden devices" Foreground="{DynamicResource Fg2}" FontSize="12"/>
             <ItemsControl x:Name="HiddenList" Focusable="False">
@@ -138,7 +144,7 @@
                     Click="DisconnectToggle_Click" AutomationProperties.Name="Notify on disconnect"/>
         </Grid>
         <TextBlock Margin="16,14,16,0" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource Fg2}"
-                   Text="Bluetooth devices only. Devices that use a 2.4 GHz USB dongle aren't supported."/>
+                   Text="Shows Bluetooth devices and Logitech wireless devices on a USB receiver. Other 2.4 GHz USB-dongle devices aren't supported."/>
         <Button Style="{StaticResource StdButton}" Content="Exit application" Margin="16,12,16,16" Click="Exit_Click"/>
       </StackPanel>
     </Border>

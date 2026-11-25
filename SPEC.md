@@ -23,6 +23,8 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 
 R1 addition (2026-11-25): Apple/Beats earbuds, which give Windows no level, are read from their own battery broadcast (left, right, case, in steps of 10). Status: AUTO for decoding and matching; the listener decoded the user's real earbuds once (right bud 80%) and their product number matches the paired device. End-to-end confirmed 2026-11-25: the packaged app recorded the user's connected earbuds at 80%. Display follows Apple's convention (unit-tested): one pair icon when both buds are within 10 points, a single bud when only one is worn or reporting, left and right separately when they differ, and the case while a bud is charging in it. Icons are original drawings. On-screen look of the pinned earbuds is manual check 8.
 
+R1 scope change (2026-11-25, user request): Logitech wireless devices on a USB receiver (Lightspeed, Unifying, Bolt) are now supported; other 2.4 GHz dongle devices remain out of scope and the flyout says so. Status: AUTO for message format and decoding; confirmed live on the user's G502 LIGHTSPEED (name read from the device, 94%), and the packaged app recorded it. Only the Lightspeed receiver has been tried on real hardware; Unifying and Bolt receivers are untested. Can be switched off in the gear panel.
+
 ## Manual checks (the only things that need a person)
 1. Open the flyout; compare each connected device's % with Windows Settings > Bluetooth & devices.
 2. Pin two devices: both appear in a strip on the taskbar, left of the clock area; clicking it opens the flyout. In the gear panel switch "Show pinned" to "As tray icons": two numbered tray icons appear instead; hover one and see all connected devices. Run `.\build.ps1 demo`, right-click its tray icon > "Demo: drain all by 10%" a few times: icons go yellow below 50 and red below 20.
@@ -32,6 +34,7 @@ R1 addition (2026-11-25): Apple/Beats earbuds, which give Windows no level, are 
 6. Switch Windows between light and dark (Settings > Personalisation > Colours) with the flyout open.
 7. Turn Bluetooth off and on; put the PC to sleep and wake it: app keeps running and recovers within about 30 seconds.
 8. Connect the AirPods, pin them, and wear them: within about 40 seconds the taskbar strip shows an earbud icon with the level. Take one bud out: within about 2 minutes it switches to the single bud still worn. Confirm left and right are the right way round. In demo mode, "Demo: next earbud layout" steps through every layout.
+9. The G502 appears in the flyout with a level close to what Logitech G HUB shows (voltage-based, so a few points' difference is normal). Plug in its charging cable: the level shows a lightning mark within about 2 minutes. Confirm G HUB still works normally alongside.
 
 ## User choices (2026-11-25)
 - Name: **BT Battery Indicator**.
@@ -40,7 +43,8 @@ R1 addition (2026-11-25): Apple/Beats earbuds, which give Windows no level, are 
 - Real test hardware: mouse/keyboard (Low Energy) and headphones/earbuds (classic Bluetooth).
 
 ## Known limits
-- 2.4 GHz USB-dongle devices; per-earbud and case levels for non-Apple earbuds (vendor-specific, not exposed by Windows).
+- Logitech receiver devices are asked every 2 minutes, so level, charging and on/off changes can lag by that long. Gaming mice report voltage, which the app converts with a typical lithium-cell curve; expect a few points' difference from G HUB.
+- Non-Logitech 2.4 GHz USB-dongle devices; per-earbud and case levels for non-Apple earbuds (vendor-specific, not exposed by Windows).
 - Apple earbud levels rely on an unpublished broadcast format that Apple could change. A bud shut in its case reports nothing, so its last known value is shown for up to 20 minutes. If someone nearby has the same model, the stronger signal is used, which can occasionally be theirs.
 - Classic (hands-free) devices report in coarse steps, often 10 or 20 points; that is all the device sends.
 - A device that only reports while in use shows "Not connected" otherwise.
