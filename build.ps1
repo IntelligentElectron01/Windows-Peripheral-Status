@@ -40,7 +40,7 @@ switch ($Task) {
         $out = Join-Path $root 'dist\BTBatteryIndicator'
         if (Test-Path $out) { Remove-Item $out -Recurse -Force }
         & $dotnet publish $app -c Release -r win-x64 --self-contained true -o $out -v q --nologo `
-            -p:DebugType=none -p:PublishReadyToRun=false
+            -p:DebugType=none -p:PublishReadyToRun=false -p:DisableTransitiveFrameworkReferenceDownloads=true
         if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
         Copy-Item (Join-Path $root 'install.ps1'), (Join-Path $root 'README.md'), (Join-Path $root 'LICENSE') $out
         $zip = Join-Path $root 'dist\BTBatteryIndicator-win-x64.zip'
