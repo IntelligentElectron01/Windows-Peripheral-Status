@@ -15,4 +15,11 @@ One line each: decision — why.
 - **Shipping: self-contained single-folder build + `install.ps1`** — a friend needs nothing pre-installed; per-user install, no admin. Unsigned, so SmartScreen may warn (harmless for a build you made yourself; a code-signing certificate costs money).
 - **Capabilities used:** read device properties, read/write own files, one HKCU Run value, show notifications. No network, no admin, no Bluetooth radio control.
 - **Repo: private GitHub `IntelligentElectron01/BTBatteryIndicator`** — user request; source only, never settings/history data.
+- **Controls styled by hand instead of WPF's built-in Fluent theme** — the accent-colour setting must recolour every control, and the built-in theme always uses the Windows accent. (Supersedes the first line's reason; .NET 10 is still the choice for its support window.)
+- **Tray icons use the .NET `NotifyIcon` wrapper rather than raw Win32 calls** — same Windows feature underneath, far less code to get wrong (it already handles Explorer restarts).
+- **No test framework; tests are a small console program** — a framework would be a third-party download.
+- **A device paired over both classic and Low Energy (e.g. a phone) is shown once** — matched by name; the Low Energy value is preferred because it is exact while hands-free is coarse.
+- **Polling every 30 seconds** — simple and reliable across sleep/Bluetooth toggles; the read is a few milliseconds.
+- **Low-battery alert fires at or below the threshold and re-arms 2 points above it** — stops repeat alerts when a level wobbles at the edge.
+- **`--demo` mode with made-up devices and its own data folder** — lets colours and notifications be tested in a minute instead of waiting for real batteries to drain.
 - **Accent colour is a setting (default blue `#2F7FDB`, or Windows accent)** — user request.
