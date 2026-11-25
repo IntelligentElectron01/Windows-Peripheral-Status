@@ -15,6 +15,7 @@ public partial class App : Application
     TrayManager? _tray;
     FlyoutWindow? _flyout;
     TaskbarStrip? _strip;
+    HotkeyManager? _hotkey;
     Mutex? _mutex;
     EventWaitHandle? _showSignal;
     readonly Dictionary<string, HistoryWindow> _historyWindows = new();
@@ -88,6 +89,12 @@ public partial class App : Application
         _flyout.RenameRequested += id => new RenameWindow(_c, id).Show();
         _c.AlertRaised += a => _tray.ShowAlert(a);
 
+        // Optional keyboard shortcut that opens the flyout from anywhere (chosen in the gear panel).
+        _hotkey = new HotkeyManager();
+        _hotkey.Pressed += () => _flyout.Toggle();
+        _flyout.ApplyHotkey = text => _hotkey.Set(text);
+        if (!_hotkey.Set(_c.Settings.Hotkey)) _c.Log(new InvalidOperationException("Saved shortcut could not be registered: " + _c.Settings.Hotkey));
+
         SystemEvents.UserPreferenceChanged += (_, _) =>
             Dispatcher.BeginInvoke(() => Theme.Apply(_c.Settings.Accent));
         SystemEvents.PowerModeChanged += (_, p) =>
@@ -115,10 +122,10 @@ public partial class App : Application
     {
         _strip = new TaskbarStrip(_c!);
         // Clicking a pinned device that is not connected tries to connect it; anything else opens the flyout.
-        _strip.Clicked += id =>
+        // Devices that cannot be connected on request (mice, keyboards, controllers) open the flyout like any other click.
+        _strip.Clicked += async id =>
         {
-            if (id is not null && _c!.NeedsConnect(id)) _ = _c.TryConnectAsync(id);
-            else _flyout?.Toggle();
+            if (id is null || !_c!.NeedsConnect(id) || !await _c.TryConnectAsync(id)) _flyout?.Toggle();
         };
         _strip.Closed += async (_, _) =>
         {
@@ -160,6 +167,7 @@ public partial class App : Application
     void Quit()
     {
         _quitting = true;
+        _hotkey?.Dispose();
         _strip?.Close();
         _tray?.Dispose();
         _c?.Shutdown();

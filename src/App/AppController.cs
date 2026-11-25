@@ -152,9 +152,13 @@ public sealed class AppController
     /// Asks Windows to connect a paired audio device, then watches for up to 12 seconds to see whether it worked.
     /// Only happens when the user clicks a not-connected device; the app never connects anything by itself.
     /// </summary>
-    public async Task TryConnectAsync(string id)
+    /// <returns>False if this device is not one Windows can connect on request (the caller then just opens the flyout).</returns>
+    public async Task<bool> TryConnectAsync(string id)
     {
-        if (!_connecting.Add(id)) return;
+        // Receiver devices and anything without a Windows audio link reconnect by themselves; nothing to ask for.
+        if (id.StartsWith("LOGI", StringComparison.Ordinal)) return false;
+        if ((await Task.Run(() => BluetoothConnector.AudioLinks(id))).Count == 0) return false;
+        if (!_connecting.Add(id)) return true;
         string name = Settings.DisplayName(id, Settings.For(id).LastKnownName ?? "Device");
         Updated?.Invoke();
         try
@@ -185,6 +189,7 @@ public sealed class AppController
             _connecting.Remove(id);
             Updated?.Invoke();
         }
+        return true;
     }
 
     /// <summary>Devices the user has not hidden, connected ones first.</summary>

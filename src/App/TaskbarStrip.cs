@@ -146,6 +146,7 @@ public sealed class TaskbarStrip : Window
         bool connecting = _c.IsConnecting(id);
         Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg, placeholder: connecting ? "…" : "–");
         row.ToolTip = connecting ? $"{name}: connecting…"
+            : d is { SleepsWhenIdle: true } || id.StartsWith("LOGI", StringComparison.Ordinal) ? $"{name}: asleep or switched off. Move it to wake it."
             : d is null || !d.Connected ? $"{name}: not connected. Click to try to connect."
             : $"{name}: {Levels.Text(d.Battery)}{(d.Charging ? " (charging)" : "")}";
         return row;

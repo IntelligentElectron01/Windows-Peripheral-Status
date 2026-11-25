@@ -25,6 +25,8 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 
 21 scope change (2026-11-25, user request): Logitech wireless devices on a USB receiver (Lightspeed, Unifying, Bolt) are now supported; other 2.4 GHz dongle devices remain out of scope and the flyout says so. Status: AUTO for message format and decoding; confirmed live on the user's G502 LIGHTSPEED (name read from the device, 94%), and the packaged app recorded it. Only the Lightspeed receiver has been tried on real hardware; Unifying and Bolt receivers are untested. Can be switched off in the gear panel.
 
+R15 (2026-11-25): optional keyboard shortcut to open the flyout, chosen in the gear panel. Status: AUTO for parsing and validation; tested on screen: picked Ctrl+Alt+B in the panel, Windows confirmed the app held that combination, then removed it again. Not done: pressing the shortcut from another app (screen control is not allowed to send system-wide key combinations).
+
 ## Manual checks (the only things that need a person)
 1. Open the flyout; compare each connected device's % with Windows Settings > Bluetooth & devices.
 2. Pin two devices: both appear in a strip on the taskbar, left of the clock area; clicking it opens the flyout. In the gear panel switch "Show pinned" to "As tray icons": two numbered tray icons appear instead; hover one and see all connected devices. 2un `.\build.ps1 demo`, right-click its tray icon > "Demo: drain all by 10%" a few times: icons go yellow below 50 and red below 20.

@@ -410,6 +410,22 @@ Section("R8 rename/hide + R12 persistence");
 }
 
 // ---------------------------------------------------------------------------------------------
+Section("R15 shortcut to open");
+{
+    Check(Hotkey.Parse("Ctrl+Alt+B") is { Ctrl: true, Alt: true, Shift: false, Win: false, Key: "B" }, "typical shortcut parsed");
+    Check(Hotkey.Parse(" alt + shift + F9 ")?.ToString() == "Alt+Shift+F9", "spacing and case tidied into one saved form");
+    Check(Hotkey.Parse("Win+D1")?.Display() == "Win+1" && Hotkey.Parse("Ctrl+OemComma")?.Display() == "Ctrl+,", "friendly names for number and punctuation keys");
+    Check(Hotkey.Parse("B") is null && Hotkey.Parse("Shift+B") is null, "must include Ctrl, Alt or Win so typing is never swallowed");
+    Check(Hotkey.Parse("Ctrl+Alt") is null && Hotkey.Parse("Ctrl+LeftShift") is null, "modifiers alone are not a shortcut");
+    Check(Hotkey.Parse("Ctrl+A+B") is null && Hotkey.Parse("") is null && Hotkey.Parse(null) is null, "nonsense and empty rejected");
+    Check(new Settings().Hotkey == "", "no shortcut by default");
+    var hs = new Settings { Hotkey = "control+alt+b" }; hs.Normalize();
+    Check(hs.Hotkey == "Ctrl+Alt+b" || hs.Hotkey == "Ctrl+Alt+B", "saved shortcut normalised");
+    hs.Hotkey = "just nonsense"; hs.Normalize();
+    Check(hs.Hotkey == "", "invalid saved shortcut cleared");
+}
+
+// ---------------------------------------------------------------------------------------------
 Section("R9 start with Windows");
 {
     // Uses a throwaway key under HKCU, never the real Run key.
@@ -458,3 +474,4 @@ Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;
 
 sealed class Throwing : IDeviceSource { public IReadOnlyList<DeviceReading> Scan() => throw new InvalidOperationException("reader failed"); }
+

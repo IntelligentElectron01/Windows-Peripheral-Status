@@ -39,7 +39,7 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 - **Pin** button on a row: that device appears on the taskbar and moves with it when the taskbar auto-hides.
 - **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
 - **Click a row** or the **…** button: battery history, rename, hide.
-- **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, hidden devices.
+- **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
 
 ## Build from source (one command)
 

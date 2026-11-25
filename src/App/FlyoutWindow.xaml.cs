@@ -55,7 +55,7 @@ public partial class FlyoutWindow : Window
         _clock.Tick += (_, _) => UpdateSyncText();
         Deactivated += (_, _) => { if (!Sticky) HideFlyout(); };
         SizeChanged += (_, _) => Place();
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) HideFlyout(); };
+        PreviewKeyDown += OnKeyDown;
         Rebuild();
     }
 
@@ -83,6 +83,7 @@ public partial class FlyoutWindow : Window
         if (!IsVisible) return;
         _hiddenAt = DateTime.UtcNow;
         _clock.Stop();
+        if (_capturingHotkey) EndHotkeyCapture(null);
         Hide();
         DeviceList.ItemsSource = null; // let the row visuals be freed while hidden
         Closed_?.Invoke();
@@ -148,6 +149,12 @@ public partial class FlyoutWindow : Window
         AccentBlue.IsChecked = s.Accent != "System";
         AccentSystem.IsChecked = s.Accent == "System";
         LogitechToggle.IsChecked = s.LogitechEnabled;
+        if (!_capturingHotkey)
+        {
+            var hk = Hotkey.Parse(s.Hotkey);
+            HotkeyButton.Content = hk?.Display() ?? "Not set";
+            HotkeyClear.Visibility = hk is null ? Visibility.Collapsed : Visibility.Visible;
+        }
         PinTaskbar.IsChecked = s.PinnedDisplay != "Tray";
         PinTray.IsChecked = s.PinnedDisplay == "Tray";
         UpdateSyncText();
@@ -281,6 +288,76 @@ public partial class FlyoutWindow : Window
         string mode = AccentSystem.IsChecked == true ? "System" : "Blue";
         _c.Change(s => s.Accent = mode);
         Theme.Apply(mode);
+    }
+
+    // ---- choosing the shortcut that opens this panel -----------------------------------------------
+
+    bool _capturingHotkey;
+
+    /// <summary>Set by the app: tries to register a shortcut with Windows and says whether it worked. Empty text clears it.</summary>
+    public Func<string, bool>? ApplyHotkey { get; set; }
+
+    void HotkeyButton_Click(object sender, RoutedEventArgs e)
+    {
+        _capturingHotkey = true;
+        ApplyHotkey?.Invoke("");   // release the current one so pressing it again can be captured
+        HotkeyButton.Content = "Press keys\u2026";
+        ShowHotkeyHint("Press the combination now. Esc cancels.");
+    }
+
+    void HotkeyClear_Click(object sender, RoutedEventArgs e)
+    {
+        _capturingHotkey = false;
+        ApplyHotkey?.Invoke("");
+        HotkeyHint.Visibility = Visibility.Collapsed;
+        _c.Change(s => s.Hotkey = "");
+    }
+
+    void ShowHotkeyHint(string text)
+    {
+        HotkeyHint.Text = text;
+        HotkeyHint.Visibility = Visibility.Visible;
+    }
+
+    void EndHotkeyCapture(string? chosen)
+    {
+        _capturingHotkey = false;
+        if (chosen is null)
+        {
+            ApplyHotkey?.Invoke(_c.Settings.Hotkey);   // cancelled: put the previous one back
+            HotkeyHint.Visibility = Visibility.Collapsed;
+        }
+        else if (ApplyHotkey?.Invoke(chosen) != false)
+        {
+            HotkeyHint.Visibility = Visibility.Collapsed;
+            _c.Change(s => s.Hotkey = chosen);
+            return;
+        }
+        else
+        {
+            ApplyHotkey?.Invoke(_c.Settings.Hotkey);
+            ShowHotkeyHint($"{Hotkey.Parse(chosen)?.Display()} is already used by Windows or another app. Try a different combination.");
+        }
+        Rebuild();
+    }
+
+    void OnKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_capturingHotkey)
+        {
+            if (e.Key == Key.Escape) HideFlyout();
+            return;
+        }
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Escape) { EndHotkeyCapture(null); return; }
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift
+            or Key.LWin or Key.RWin or Key.System or Key.None or Key.ImeProcessed or Key.DeadCharProcessed) return; // still holding modifiers
+        var mods = Keyboard.Modifiers;
+        var hotkey = new Hotkey(mods.HasFlag(ModifierKeys.Control), mods.HasFlag(ModifierKeys.Alt), mods.HasFlag(ModifierKeys.Shift),
+            mods.HasFlag(ModifierKeys.Windows), key.ToString());
+        if (!hotkey.IsValid) { ShowHotkeyHint("Include Ctrl, Alt or the Windows key, for example Ctrl+Alt+B."); return; }
+        EndHotkeyCapture(hotkey.ToString());
     }
 
     async void LogitechToggle_Click(object sender, RoutedEventArgs e)

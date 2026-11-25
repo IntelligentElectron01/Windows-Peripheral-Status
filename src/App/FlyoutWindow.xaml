@@ -114,6 +114,18 @@
             <CheckBox x:Name="LogitechToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
                       Click="LogitechToggle_Click" AutomationProperties.Name="Logitech wireless devices"/>
           </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Shortcut to open" VerticalAlignment="Center"
+                       ToolTip="A key combination that opens this panel from anywhere. It must include Ctrl, Alt or the Windows key."/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="HotkeyClear" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Width="28" Height="28"
+                      ToolTip="Remove the shortcut" Click="HotkeyClear_Click"/>
+              <Button x:Name="HotkeyButton" Style="{StaticResource StdButton}" Content="Not set" Padding="10,4" MinWidth="96"
+                      ToolTip="Click, then press the keys you want" Click="HotkeyButton_Click"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="HotkeyHint" Margin="16,6,16,0" FontSize="11.5" TextWrapping="Wrap" Visibility="Collapsed"
+                     Foreground="{DynamicResource Fg2}"/>
           <StackPanel x:Name="HiddenPanel" Margin="16,12,8,0">
             <TextBlock Text="Hidden devices" Foreground="{DynamicResource Fg2}" FontSize="12"/>
             <ItemsControl x:Name="HiddenList" Focusable="False">

@@ -26,6 +26,8 @@ public sealed class Settings
     public string PinnedDisplay { get; set; } = "Taskbar";
     /// <summary>Ask Logitech wireless devices on a USB receiver for their battery level (the one reader that sends messages).</summary>
     public bool LogitechEnabled { get; set; } = true;
+    /// <summary>System-wide keyboard shortcut that opens the flyout, e.g. "Ctrl+Alt+B". Empty means none.</summary>
+    public string Hotkey { get; set; } = "";
     public Dictionary<string, DevicePrefs> Devices { get; set; } = new();
 
     public DevicePrefs For(string id)
@@ -45,6 +47,7 @@ public sealed class Settings
         LowBatteryThreshold = Math.Clamp(LowBatteryThreshold, MinThreshold, MaxThreshold);
         if (Accent != "System") Accent = "Blue";
         if (PinnedDisplay != "Tray") PinnedDisplay = "Taskbar";
+        Hotkey = Core.Hotkey.Parse(Hotkey)?.ToString() ?? "";
         Devices ??= new();
         foreach (var k in Devices.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList())
             Devices.Remove(k);
