@@ -116,9 +116,22 @@ public sealed partial class WindowsDeviceSource : IDeviceSource
                                .OrderByDescending(n => n.Connected == true) // the live link's value beats a stale one
                                .ThenByDescending(n => IsLeRoot(n.InstanceId)) // Low Energy reports exact %, hands-free is coarse
                                .ThenByDescending(n => n.Present).FirstOrDefault();
-            result.Add(new DeviceReading(g.Id, g.Name, GuessKind(g.Nodes, g.Name), connected, batteryNode?.Battery));
+            result.Add(new DeviceReading(g.Id, g.Name, GuessKind(g.Nodes, g.Name), connected, batteryNode?.Battery)
+            {
+                AppleModel = g.Nodes.Select(n => AppleModelFromInstanceId(n.InstanceId)).FirstOrDefault(m => m is not null),
+            });
         }
         return result.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    [GeneratedRegex(@"VID&(0001004C|000205AC)_PID&([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase)]
+    private static partial Regex AppleRx();
+
+    /// <summary>Apple's vendor number appears in the instance ID of its devices, followed by the product number.</summary>
+    public static int? AppleModelFromInstanceId(string id)
+    {
+        var m = AppleRx().Match(id);
+        return m.Success ? Convert.ToInt32(m.Groups[2].Value, 16) : null;
     }
 
     static string RootName(List<Node> nodes) =>

@@ -16,6 +16,11 @@ public sealed class AppController
     readonly DispatcherTimer _timer;
     readonly string _logPath;
     bool _scanning;
+    readonly IPodsListener? _pods;
+    readonly PodsTracker _podsTracker = new();
+    IReadOnlyList<DeviceReading> _raw = [];
+    DateTime _lastListen = DateTime.MinValue;
+    bool _listening;
 
     public Settings Settings { get; }
     public HistoryStore History { get; }
@@ -36,9 +41,10 @@ public sealed class AppController
     public event Action? Updated;
     public event Action<Alert>? AlertRaised;
 
-    public AppController(IDeviceSource source, string dataDir)
+    public AppController(IDeviceSource source, string dataDir, IPodsListener? pods = null)
     {
         _source = source;
+        _pods = pods;
         Directory.CreateDirectory(dataDir);
         _logPath = Path.Combine(dataDir, "log.txt");
         _settingsStore = new SettingsStore(dataDir);
@@ -62,9 +68,10 @@ public sealed class AppController
         _scanning = true;
         try
         {
-            var list = await Task.Run(_source.Scan);
-            Apply(list);
+            _raw = await Task.Run(_source.Scan);
+            Apply(_raw);
             Error = null;
+            _ = ListenForPodsAsync();
         }
         catch (Exception e)
         {
@@ -75,9 +82,35 @@ public sealed class AppController
         Updated?.Invoke();
     }
 
+    /// <summary>
+    /// Apple earbuds don't give Windows a battery level; they broadcast it instead. While such a device is
+    /// connected, listen for a few seconds (receive-only): every scan until a level is known, then every 2 minutes.
+    /// </summary>
+    async Task ListenForPodsAsync()
+    {
+        if (_pods is null || _listening || !PodsTracker.Wanted(_raw)) return;
+        var now = DateTime.UtcNow;
+        bool known = _podsTracker.Enrich(_raw, now).Any(d => d.Pods is not null);
+        if (known && now - _lastListen < TimeSpan.FromMinutes(2)) return;
+        _listening = true;
+        try
+        {
+            var heard = await _pods.ListenAsync(TimeSpan.FromSeconds(5));
+            _lastListen = DateTime.UtcNow;
+            if (_podsTracker.Update(heard, _lastListen))
+            {
+                Apply(_raw);
+                Updated?.Invoke();
+            }
+        }
+        catch (Exception e) { Log(e); }
+        finally { _listening = false; }
+    }
+
     void Apply(IReadOnlyList<DeviceReading> list)
     {
         var now = DateTime.UtcNow;
+        list = _podsTracker.Enrich(list, now);
         Devices = list;
         LastSync = now;
         bool settingsChanged = false;

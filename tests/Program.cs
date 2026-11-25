@@ -26,7 +26,19 @@ if (args.Length > 0 && args[0] == "dump")
                           $"{Short(Regex.Replace(n.InstanceId, "[0-9A-Fa-f]{12}", "…"))} | {n.Name}");
     Console.WriteLine("--- combined ---");
     foreach (var d in new WindowsDeviceSource().Scan())
-        Console.WriteLine($"{d.Name} | {d.Kind} | connected={d.Connected} | {Levels.Text(d.Battery)}");
+        Console.WriteLine($"{d.Name} | {d.Kind} | connected={d.Connected} | {Levels.Text(d.Battery)}{(d.AppleModel is int am ? $" | apple model {am:X4}" : "")}");
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "pods")
+{
+    // Listens (receive-only) for earbud broadcasts for 10 seconds and prints what it decodes.
+    Console.WriteLine($"handler id {BlePodsListener.IID_ReceivedHandler}");
+    var listener = new BlePodsListener();
+    var heard = await listener.ListenAsync(TimeSpan.FromSeconds(10));
+    Console.WriteLine($"error: {listener.LastError ?? "none"}; broadcasts decoded: {heard.Count}; callbacks {BlePodsListener.Callbacks}, entries {BlePodsListener.Entries}, apple {BlePodsListener.AppleEntries}, diag {BlePodsListener.Diagnostic}");
+    foreach (var g in heard.GroupBy(h => h.Levels).OrderByDescending(g => g.Max(h => h.Rssi)))
+        Console.WriteLine($"model {g.Key.Model:X4} rssi {g.Max(h => h.Rssi)} x{g.Count()} | {g.Key.Describe()}");
     return 0;
 }
 
@@ -109,6 +121,54 @@ Section("R1 device reading");
         Console.WriteLine($"info: live scan found {live.Count} paired device(s), {live.Count(d => d.Connected)} connected, {live.Count(d => d.Connected && d.Battery is not null)} reporting a level");
     }
     catch (Exception e) { Check(false, "live scan threw " + e.GetType().Name + ": " + e.Message); }
+}
+
+// ---------------------------------------------------------------------------------------------
+Section("R1 Apple earbuds");
+{
+    // type 07, length 19, 01, model bytes, status, bud levels, charge|case, then filler
+    byte[] Adv(byte status, byte buds, byte chargeCase, byte m0 = 0x24, byte m1 = 0x20) =>
+        [0x07, 0x19, 0x01, m0, m1, status, buds, chargeCase, 0x01, 0x00, 0x00, .. new byte[16]];
+
+    var p = ApplePods.Parse(Adv(0x20, 0x98, 0x55))!;
+    Check(p is { Model: 0x2024, Left: 80, Right: 90, Case: 50 }, "levels decoded: left 80, right 90, case 50");
+    Check(p is { LeftCharging: true, RightCharging: false, CaseCharging: true }, "charging flags decoded");
+    var flipped = ApplePods.Parse(Adv(0x00, 0x98, 0x55))!;
+    Check(flipped is { Left: 90, Right: 80, LeftCharging: false, RightCharging: true }, "left/right swap flag honoured");
+    var partial = ApplePods.Parse(Adv(0x20, 0x8F, 0x0F))!;
+    Check(partial is { Left: null, Right: 80, Case: null } && partial.Lowest == 80, "unreported bud/case -> null; lowest ignores them");
+    Check(ApplePods.Parse(Adv(0x20, 0xAA, 0x0A))! is { Left: 100, Right: 100, Case: 100 }, "full = 100");
+    Check(ApplePods.Parse([0x10, 0x05, 0x01, 0x18, 0x00, 0x00, 0x00, 0x00]) is null, "other Apple broadcasts (e.g. a phone) are ignored");
+    Check(ApplePods.Parse([0x07, 0x19]) is null, "truncated data ignored");
+    Check(p.Short() == "L 80% · R 90%" && p.Describe() == "Left 80% (charging) · Right 90% · Case 50% (charging)", "display text");
+
+    Check(WindowsDeviceSource.AppleModelFromInstanceId(@"BTHENUM\{0000111e-0000-1000-8000-00805f9b34fb}_VID&0001004c_PID&2024\7&1&0&AABBCCDDEEFF_C00000000") == 0x2024, "Apple product number read from instance ID");
+    Check(WindowsDeviceSource.AppleModelFromInstanceId(@"BTHENUM\{0000111e-0000-1000-8000-00805f9b34fb}_VID&0002054C_PID&0F8A\7&1&0&AABBCCDDEEFF") is null, "non-Apple vendor ignored");
+
+    DeviceReading Buds(string id, int model, bool connected = true, int? batt = null) =>
+        new(id, "Buds " + id, DeviceKind.Headphones, connected, batt) { AppleModel = model };
+    var tr = new PodsTracker();
+    Check(tr.Update([(p, -50), (p with { Left = 10, Right = 10 }, -80)], t0), "first broadcast is a change");
+    Check(tr.Get(0x2024, t0) is { Left: 80 }, "far-away earbuds of the same model are ignored");
+    Check(!tr.Update([(p, -55)], t0.AddSeconds(30)), "same levels again: no change");
+    tr.Update([(p with { Left = 30, Right = 40 }, -60), (p with { Left = 70, Right = 70 }, -45)], t0.AddMinutes(1));
+    Check(tr.Get(0x2024, t0.AddMinutes(1)) is { Left: 70 }, "several pairs nearby: strongest signal wins");
+    tr.Update([(partial, -50)], t0.AddMinutes(2));
+    Check(tr.Get(0x2024, t0.AddMinutes(2)) is { Left: 70, Right: 80, Case: 50 }, "missing values keep the last known ones");
+    Check(tr.Get(0x2024, t0.AddMinutes(30)) is null, "stale after 20 minutes without a broadcast");
+
+    var list = new List<DeviceReading> { Buds("1", 0x2024), Buds("2", 0x2024, connected: false), Buds("3", 0x200E, batt: 55), Dev("4", null) };
+    var rich = tr.Enrich(list, t0.AddMinutes(2));
+    Check(rich[0] is { Battery: 70, Pods: not null }, "connected earbuds with no Windows level get the broadcast level (lower bud)");
+    Check(rich[1] is { Battery: null, Pods: null }, "disconnected earbuds are left alone");
+    Check(rich[2] is { Battery: 55, Pods: null }, "a level from Windows is never overridden");
+    Check(rich[3] is { Battery: null, Pods: null }, "non-Apple device untouched");
+    Check(PodsTracker.Wanted(list) && !PodsTracker.Wanted([Buds("2", 0x2024, false), Dev("4", null)]), "listening only when a connected Apple device lacks a level");
+    var mismatch = tr.Enrich([Buds("9", 0x1234)], t0.AddMinutes(2));
+    Check(mismatch[0].Battery == 70, "single candidate with an unknown product number accepts the earbuds that were heard");
+    var two = tr.Enrich([Buds("8", 0x1234), Buds("9", 0x5678)], t0.AddMinutes(2));
+    Check(two.All(d => d.Battery is null), "two candidates and no exact match: no guessing");
+    Check(BlePodsListener.IID_ReceivedHandler == new Guid("90EB4ECA-D465-5EA0-A61C-033C8C5ECEF2"), "callback identifier derived correctly");
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -60,7 +60,7 @@ public partial class App : Application
         if (shot && Directory.Exists(dataDir)) Directory.Delete(dataDir, true);
 
         IDeviceSource source = demo ? new DemoDeviceSource() : new WindowsDeviceSource();
-        _c = new AppController(source, dataDir);
+        _c = new AppController(source, dataDir, demo ? null : new BlePodsListener());
         Theme.Apply(_c.Settings.Accent);
 
         if (shot)

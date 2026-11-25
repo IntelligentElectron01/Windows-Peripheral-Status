@@ -4,6 +4,7 @@ A small, free Windows 10 (1809+) / Windows 11 tray app that shows the battery le
 Everything stays on your PC: no account, no ads, no telemetry, no network access.
 
 - Battery % for Bluetooth mice, keyboards, headphones, earbuds, controllers and phones
+- Left, right and case levels for AirPods and Beats earbuds, read from the battery signal they broadcast
 - Pin devices to show them in a strip on the taskbar with a battery gauge and percentage, or as numbered tray icons if you prefer (yellow under 50%, red under 20%)
 - Hover any tray icon to see every connected device
 - Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
@@ -51,7 +52,9 @@ This produces `dist\BTBatteryIndicator-win-x64.zip`. `.\build.ps1` on its own bu
 ## How it works
 
 The app reads the battery value Windows already keeps for each paired Bluetooth device (the same number shown in
-Windows Settings). It only reads; it never connects to, pairs, or changes a device. Settings and history are plain
+Windows Settings). It only reads; it never connects to, pairs, or changes a device. Apple earbuds are the exception to
+"Windows already has it": they broadcast their levels instead, so while they are connected the app listens for that
+broadcast for a few seconds at a time. Listening is receive-only. Settings and history are plain
 JSON files in `%LOCALAPPDATA%\BTBatteryIndicator`.
 
 ## License

@@ -9,6 +9,7 @@ public sealed class DemoDeviceSource : IDeviceSource
         new("DEMO00000002", "Demo Mouse", DeviceKind.Mouse, true, 55),
         new("DEMO00000003", "Demo Headphones", DeviceKind.Headphones, true, 24),
         new("DEMO00000004", "Demo Speaker", DeviceKind.Speaker, true, null),
+        new("DEMO00000005", "Demo Earbuds", DeviceKind.Headphones, true, 70) { Pods = new PodLevels(0, 70, 80, 40, CaseCharging: true) },
     ];
 
     public IReadOnlyList<DeviceReading> Scan() { lock (_devices) return _devices.ToList(); }

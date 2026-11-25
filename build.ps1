@@ -6,7 +6,7 @@
     .\build.ps1 package    make dist\BTBatteryIndicator-win-x64.zip (self-contained)
   Uses the project-local .NET SDK in .tools\dotnet if present, otherwise a system-wide 'dotnet'.
 #>
-param([ValidateSet('test', 'run', 'demo', 'package', 'dump', 'shots')] [string]$Task = 'test')
+param([ValidateSet('test', 'run', 'demo', 'package', 'dump', 'pods', 'shots')] [string]$Task = 'test')
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -36,6 +36,7 @@ switch ($Task) {
     'demo' { Build $app; Start-Process $exe -ArgumentList '--demo' }
     'shots' { Build $app; Start-Process $exe -ArgumentList '--shot', ('"' + (Join-Path $root 'dist\shots') + '"') -Wait }
     'dump' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') dump }
+    'pods' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') pods }
     'package' {
         $out = Join-Path $root 'dist\BTBatteryIndicator'
         if (Test-Path $out) { Remove-Item $out -Recurse -Force }

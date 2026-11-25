@@ -155,7 +155,7 @@ public partial class FlyoutWindow : Window
             Id = d.Id,
             Name = name,
             Glyph = GlyphFor(d.Kind),
-            LevelText = !d.Connected ? "Not connected" : Levels.Text(d.Battery),
+            LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? pods.Short() : Levels.Text(d.Battery),
             Level = live ? d.Battery!.Value : 0,
             BarVisibility = live ? Visibility.Visible : Visibility.Collapsed,
             BarBrush = levelBrush,
@@ -163,7 +163,8 @@ public partial class FlyoutWindow : Window
             PinBrush = pinned ? Theme.Res("Accent") : Theme.Res("Fg2"),
             PinGlyph = pinned ? "" : "",
             PinTip = pinned ? "Unpin" : _c.Settings.PinnedDisplay == "Tray" ? "Pin to the tray as its own icon" : "Pin to the taskbar",
-            RowTip = $"{name} — click for battery history",
+            RowTip = d is { Connected: true, Pods: { } p } ? $"{name}: {p.Describe()}\nClick for battery history"
+                   : $"{name} — click for battery history",
             Fade = d.Connected ? 1 : 0.55,
         };
     }

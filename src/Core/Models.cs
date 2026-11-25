@@ -3,7 +3,13 @@ namespace BTBatteryIndicator.Core;
 public enum DeviceKind { Generic, Mouse, Keyboard, Headphones, Speaker, Gamepad, Phone }
 
 /// <summary>One paired Bluetooth device as read from Windows. Id is the Bluetooth address.</summary>
-public sealed record DeviceReading(string Id, string Name, DeviceKind Kind, bool Connected, int? Battery);
+public sealed record DeviceReading(string Id, string Name, DeviceKind Kind, bool Connected, int? Battery)
+{
+    /// <summary>Apple/Beats product number when the device is one, used to match its battery broadcast.</summary>
+    public int? AppleModel { get; init; }
+    /// <summary>Per-bud and case levels, when they came from an earbud broadcast rather than from Windows.</summary>
+    public PodLevels? Pods { get; init; }
+}
 
 public interface IDeviceSource
 {

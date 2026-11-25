@@ -21,6 +21,8 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 | R11 | Fully local: no account, ads, telemetry, network | No networking APIs in source (automated); no connections while running | AUTO. Packaged app observed with 0 TCP connections and 0 UDP endpoints. |
 | R12 | Settings/history persist; survives Bluetooth off, disconnects, sleep/resume | Restart keeps settings + history; corrupt files recover to defaults; Bluetooth off shows a clear state, no crash | AUTO for persistence and corrupt files. Bluetooth-off and sleep/resume are coded but unverified (manual check 7). |
 
+R1 addition (2026-11-25): Apple/Beats earbuds, which give Windows no level, are read from their own battery broadcast (left, right, case, in steps of 10). Status: AUTO for decoding and matching; the listener decoded the user's real earbuds once (right bud 80%) and their product number matches the paired device. Not yet seen end-to-end in the flyout because the earbuds disconnected before the app build was ready (manual check 8).
+
 ## Manual checks (the only things that need a person)
 1. Open the flyout; compare each connected device's % with Windows Settings > Bluetooth & devices.
 2. Pin two devices: both appear in a strip on the taskbar, left of the clock area; clicking it opens the flyout. In the gear panel switch "Show pinned" to "As tray icons": two numbered tray icons appear instead; hover one and see all connected devices. Run `.\build.ps1 demo`, right-click its tray icon > "Demo: drain all by 10%" a few times: icons go yellow below 50 and red below 20.
@@ -29,6 +31,7 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 5. Switch on "Start with Windows", sign out and in: icon appears, no window, no admin prompt.
 6. Switch Windows between light and dark (Settings > Personalisation > Colours) with the flyout open.
 7. Turn Bluetooth off and on; put the PC to sleep and wake it: app keeps running and recovers within about 30 seconds.
+8. Connect the AirPods and wear them: within about 40 seconds their row shows "L n% · R n%"; hover the row for the case level.
 
 ## User choices (2026-11-25)
 - Name: **BT Battery Indicator**.
@@ -37,7 +40,8 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 - Real test hardware: mouse/keyboard (Low Energy) and headphones/earbuds (classic Bluetooth).
 
 ## Known limits
-- 2.4 GHz USB-dongle devices; per-earbud and charging-case levels (vendor-specific, not exposed by Windows).
+- 2.4 GHz USB-dongle devices; per-earbud and case levels for non-Apple earbuds (vendor-specific, not exposed by Windows).
+- Apple earbud levels rely on an unpublished broadcast format that Apple could change. A bud shut in its case reports nothing, so its last known value is shown for up to 20 minutes. If someone nearby has the same model, the stronger signal is used, which can occasionally be theirs.
 - Classic (hands-free) devices report in coarse steps, often 10 or 20 points; that is all the device sends.
 - A device that only reports while in use shows "Not connected" otherwise.
 - The flyout may sit slightly off on setups with several monitors at different scaling.
