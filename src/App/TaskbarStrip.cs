@@ -24,7 +24,7 @@ public sealed class TaskbarStrip : Window
     // Slow safety-net timer; real-time following of the taskbar is event-driven (see Hook) so the app can sleep.
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly WinEventProc _onTaskbarMoved;
-    IntPtr _hwnd, _hook, _hookedBar;
+    IntPtr _hwnd, _hook, _hookedBar, _ownerBar;
     int _lastX = int.MinValue, _lastY = int.MinValue;
     string _builtKey = "";
     bool _wanted;
@@ -66,11 +66,11 @@ public sealed class TaskbarStrip : Window
             long ex = GetWindowLongPtrW(_hwnd, -20).ToInt64();
             SetWindowLongPtrW(_hwnd, -20, new IntPtr(ex | 0x08000000L /* NOACTIVATE */ | 0x00000080L /* TOOLWINDOW */));
         };
-        _onTaskbarMoved = (_, _, hwnd, idObject, _, _, _) => { if (hwnd == _hookedBar && idObject == 0) Place(topmost: false); };
+        _onTaskbarMoved = (_, _, hwnd, idObject, _, _, _) => { if (hwnd == _hookedBar && idObject == 0) { Place(topmost: false); FollowTaskbar(); } };
         _timer.Tick += (_, _) => Place();
         _c.Updated += Rebuild;
         Theme.Changed += Rebuild;
-        Closed += (_, _) => { _timer.Stop(); Unhook(); _c.Updated -= Rebuild; Theme.Changed -= Rebuild; };
+        Closed += (_, _) => { _timer.Stop(); Unhook(); if (_following) CompositionTarget.Rendering -= OnFrame; _c.Updated -= Rebuild; Theme.Changed -= Rebuild; };
         Rebuild();
     }
 
@@ -190,16 +190,24 @@ public sealed class TaskbarStrip : Window
         if (barH > barW) { SetAvailable(false); HideStrip(); return; } // vertical taskbar: fall back to tray icons
         SetAvailable(true);
 
-        // Full-screen game, presentation, or exclusive app: stay out of the way.
-        if (SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4) { HideStrip(); return; }
+        // Windows takes the taskbar out of the always-on-top group while a full-screen app covers it, and puts it
+        // back when the taskbar is shown again. Following that flag means the strip shows exactly when the taskbar does.
+        bool barOnTop = (GetWindowLongPtrW(bar, -20).ToInt64() & 0x8L /* TOPMOST */) != 0;
+        if (!barOnTop) { Park(); return; }
 
-        // Auto-hide taskbar: only show while most of the taskbar is actually on screen.
-        var screen = System.Windows.Forms.Screen.FromHandle(bar).Bounds;
-        int visible = Math.Min(tb.Bottom, screen.Bottom) - Math.Max(tb.Top, screen.Top);
-        if (visible < barH * 0.8) { HideStrip(); return; }
-
+        // Auto-hide taskbar: the strip is never hidden; it simply rides along with the taskbar, off the edge of
+        // the screen and back, so there is nothing to blink when the taskbar starts to move.
         if (!IsVisible) Show();
         if (_hwnd == IntPtr.Zero) return;
+
+        // Make the taskbar this window's owner. Windows always draws an owned window in front of its owner, so the
+        // strip can no longer end up behind the taskbar when the taskbar slides in or is clicked.
+        if (_ownerBar != bar)
+        {
+            SetWindowLongPtrW(_hwnd, -8 /* owner */, bar);
+            _ownerBar = bar;
+            topmost = true;
+        }
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         int w = (int)Math.Ceiling(ActualWidth * scale), h = (int)Math.Ceiling(ActualHeight * scale);
@@ -210,9 +218,51 @@ public sealed class TaskbarStrip : Window
         if (!topmost && x == _lastX && y == _lastY) return;
         _lastX = x; _lastY = y;
         SetWindowPos(_hwnd, new IntPtr(-1) /* topmost */, x, y, 0, 0, 0x0001 /* NOSIZE */ | 0x0010 /* NOACTIVATE */);
+        if (topmost) SetWindowPos(_hwnd, IntPtr.Zero /* front of its group */, 0, 0, 0, 0, 0x0001 | 0x0002 /* NOMOVE */ | 0x0010);
+    }
+
+    /// <summary>Moves the strip off screen without hiding it (hiding and re-showing a window causes a visible blink).</summary>
+    void Park()
+    {
+        if (_hwnd == IntPtr.Zero || !IsVisible || _lastX == -32000) return;
+        _lastX = -32000; _lastY = -32000;
+        SetWindowPos(_hwnd, IntPtr.Zero, -32000, -32000, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010);
+    }
+
+    // While the taskbar is sliding, reposition on every screen frame so the strip moves in step with it.
+    bool _following;
+    long _followUntil;
+
+    void FollowTaskbar()
+    {
+        _followUntil = Environment.TickCount64 + 700;
+        if (_following) return;
+        _following = true;
+        CompositionTarget.Rendering += OnFrame;
+    }
+
+    void OnFrame(object? sender, EventArgs e)
+    {
+        int beforeY = _lastY;
+        Place(topmost: false);
+        if (_lastY != beforeY) _followUntil = Environment.TickCount64 + 700; // still moving
+        if (Environment.TickCount64 < _followUntil) return;
+        CompositionTarget.Rendering -= OnFrame;
+        _following = false;
     }
 
     void HideStrip() { if (IsVisible) { Hide(); _lastX = int.MinValue; } }
+
+    /// <summary>The taskbar's rectangle in screen pixels if it is currently showing on screen, otherwise null.</summary>
+    public static System.Drawing.Rectangle? VisibleTaskbar()
+    {
+        IntPtr bar = FindWindowW("Shell_TrayWnd", null);
+        if (bar == IntPtr.Zero || !GetWindowRect(bar, out RECT tb)) return null;
+        var screen = System.Windows.Forms.Screen.FromHandle(bar).Bounds;
+        var rect = System.Drawing.Rectangle.FromLTRB(tb.Left, tb.Top, tb.Right, tb.Bottom);
+        var on = System.Drawing.Rectangle.Intersect(rect, screen);
+        return on.Width * (long)on.Height >= rect.Width * (long)rect.Height * 0.8 ? rect : null;
+    }
 
     /// <summary>Asks Windows to tell us when the taskbar moves (auto-hide sliding in and out), instead of polling.</summary>
     void Hook(IntPtr bar)
@@ -256,7 +306,6 @@ public sealed class TaskbarStrip : Window
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
-    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
 
     delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
     [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint pid, uint thread, uint flags);

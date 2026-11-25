@@ -95,10 +95,18 @@ public partial class FlyoutWindow : Window
         var screen = WF.Screen.FromPoint(WF.Cursor.Position);
         var wa = screen.WorkingArea;
         double s = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        // With an auto-hide taskbar Windows reports the whole screen as free, so also step clear of the
+        // taskbar itself while it is showing.
+        int freeTop = wa.Top, freeBottom = wa.Bottom;
+        if (TaskbarStrip.VisibleTaskbar() is { } bar && bar.Width > bar.Height && screen.Bounds.IntersectsWith(bar))
+        {
+            if (bar.Top > screen.Bounds.Top + screen.Bounds.Height / 2) freeBottom = Math.Min(freeBottom, bar.Top);
+            else freeTop = Math.Max(freeTop, bar.Bottom);
+        }
         double left = wa.Right / s - ActualWidth;
-        double top = wa.Bottom / s - ActualHeight;
-        if (wa.Left > screen.Bounds.Left) left = wa.Left / s;   // taskbar on the left
-        if (wa.Top > screen.Bounds.Top) top = wa.Top / s;       // taskbar on the top
+        double top = freeBottom / s - ActualHeight;
+        if (wa.Left > screen.Bounds.Left) left = wa.Left / s;      // taskbar on the left
+        if (freeTop > screen.Bounds.Top) top = freeTop / s;        // taskbar on the top
         Left = left;
         Top = top;
     }
