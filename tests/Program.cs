@@ -35,7 +35,10 @@ if (args.Length > 0 && args[0] == "pods")
     // Listens (receive-only) for earbud broadcasts for 10 seconds and prints what it decodes.
     Console.WriteLine($"handler id {BlePodsListener.IID_ReceivedHandler}");
     var listener = new BlePodsListener();
-    var heard = await listener.ListenAsync(TimeSpan.FromSeconds(10));
+    await listener.ListenAsync(TimeSpan.FromSeconds(2)); // warm-up so one-off start-up cost is not counted
+    var me = System.Diagnostics.Process.GetCurrentProcess(); var c0 = me.TotalProcessorTime;
+    var heard = await listener.ListenAsync(TimeSpan.FromSeconds(5));
+    me.Refresh(); Console.WriteLine($"cpu for one 5 s listen: {(me.TotalProcessorTime - c0).TotalMilliseconds:0} ms");
     Console.WriteLine($"error: {listener.LastError ?? "none"}; broadcasts decoded: {heard.Count}; callbacks {BlePodsListener.Callbacks}, entries {BlePodsListener.Entries}, apple {BlePodsListener.AppleEntries}, diag {BlePodsListener.Diagnostic}");
     foreach (var g in heard.GroupBy(h => h.Levels).OrderByDescending(g => g.Max(h => h.Rssi)))
         Console.WriteLine($"model {g.Key.Model:X4} rssi {g.Max(h => h.Rssi)} x{g.Count()} | {g.Key.Describe()} | view {g.Key.View} -> {g.Key.Short()}");
@@ -50,6 +53,9 @@ if (args.Length > 0 && args[0] == "logi")
     var found = logi.Scan();
     Console.WriteLine($"poll took {sw.ElapsedMilliseconds} ms; devices: {found.Count}");
     foreach (var line in logi.Trace) Console.WriteLine("trace: " + line);
+    var me2 = System.Diagnostics.Process.GetCurrentProcess(); var c2 = me2.TotalProcessorTime;
+    for (int i = 0; i < 5; i++) new LogitechSource().Scan();
+    me2.Refresh(); Console.WriteLine($"cpu per cold poll: {(me2.TotalProcessorTime - c2).TotalMilliseconds / 5:0} ms");
     foreach (var d in found) Console.WriteLine($"device: {d.Name} | {d.Kind} | connected={d.Connected} | {Levels.Text(d.Battery)} | charging={d.Charging} | id {d.Id}");
     return 0;
 }

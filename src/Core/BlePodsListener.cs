@@ -26,6 +26,7 @@ public sealed class BlePodsListener : IPodsListener
 
     static readonly object Gate = new();
     static List<(PodLevels, int)>? s_heard;   // filled by the callback while a burst is running
+    static TaskCompletionSource? s_first;     // completed when a nearby earbud broadcast arrives
     static IntPtr s_handler;                  // the callback object handed to Windows (lives for the process)
 
     IntPtr _watcher;
@@ -44,12 +45,17 @@ public sealed class BlePodsListener : IPodsListener
             lock (Gate) s_heard = heard;
             int hr = StartStop(17);
             if (hr < 0) { LastError = $"Start failed 0x{hr:X8}"; return []; }
-            await Task.Delay(duration).ConfigureAwait(false);
+            // Scanning is the expensive part, so stop shortly after the first nearby earbud broadcast instead of
+            // running the full time. The short tail lets a second pair nearby be heard so the stronger one can win.
+            var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (Gate) s_first = first;
+            if (await Task.WhenAny(first.Task, Task.Delay(duration)).ConfigureAwait(false) == first.Task)
+                await Task.Delay(300).ConfigureAwait(false);
         }
         catch (Exception e) { LastError = e.Message; _failed = true; }
         finally
         {
-            lock (Gate) s_heard = null;
+            lock (Gate) { s_heard = null; s_first = null; }
             if (_watcher != IntPtr.Zero) StartStop(18);
         }
         lock (heard) return heard.ToList();
@@ -195,6 +201,7 @@ public sealed class BlePodsListener : IPodsListener
                 {
                     var heard = s_heard;
                     if (heard is not null) lock (heard) heard.Add((levels, rssi));
+                    if (rssi >= PodsTracker.MinRssi) s_first?.TrySetResult();
                 }
             }
             finally { Release(reader); }
