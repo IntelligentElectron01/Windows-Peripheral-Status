@@ -54,6 +54,8 @@
                   </Grid.RowDefinitions>
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" FontFamily="{StaticResource Icons}" FontSize="16"
                              Foreground="{Binding GlyphBrush}" VerticalAlignment="Center" Opacity="{Binding Fade}"/>
+                  <Path Grid.RowSpan="2" Data="{Binding Icon}" Fill="{Binding GlyphBrush}" Height="16" MaxWidth="22"
+                        Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="{Binding Fade}"/>
                   <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" Opacity="{Binding Fade}"/>
                   <TextBlock Grid.Column="2" Text="{Binding LevelText}" Foreground="{DynamicResource Fg2}"

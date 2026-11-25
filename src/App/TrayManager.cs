@@ -34,6 +34,7 @@ public sealed class TrayManager : IDisposable
             _menu.Items.Add(new WF.ToolStripSeparator());
             _menu.Items.Add("Demo: drain all by 10%", null, async (_, _) => { demo.Drain(10); await _c.RefreshAsync(); });
             _menu.Items.Add("Demo: recharge all", null, async (_, _) => { demo.Recharge(); await _c.RefreshAsync(); });
+            _menu.Items.Add("Demo: next earbud layout", null, async (_, _) => { demo.CyclePods(); await _c.RefreshAsync(); });
             _menu.Items.Add("Demo: connect/disconnect keyboard", null,
                 async (_, _) => { demo.ToggleConnected("DEMO00000001"); await _c.RefreshAsync(); });
         }

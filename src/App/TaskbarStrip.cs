@@ -30,6 +30,9 @@ public sealed class TaskbarStrip : Window
     bool _wanted;
     bool _lightTaskbar;
 
+    /// <summary>Stay visible wherever it is, ignoring the taskbar (used for automated screenshots).</summary>
+    public bool Sticky { get; set; }
+
     public event Action? Clicked;
 
     public TaskbarStrip(AppController c)
@@ -84,7 +87,7 @@ public sealed class TaskbarStrip : Window
 
         // Most 30-second scans change nothing; skip rebuilding the visuals when that is the case.
         string key = $"{_wanted}|{_lightTaskbar}|{Theme.Accent}|{Theme.Dark}|" + string.Join(";",
-            pinned.Select(p => $"{p.Id},{p.Name},{p.Dev?.Kind},{p.Dev?.Connected},{p.Dev?.Battery}"));
+            pinned.Select(p => $"{p.Id},{p.Name},{p.Dev?.Kind},{p.Dev?.Connected},{p.Dev?.Battery},{p.Dev?.Pods}"));
         if (key == _builtKey) { Place(); return; }
         _builtKey = key;
         _timer.IsEnabled = _wanted;
@@ -107,23 +110,51 @@ public sealed class TaskbarStrip : Window
 
     FrameworkElement MakeItem(string name, DeviceReading? d, Brush fg)
     {
-        bool live = d is { Connected: true, Battery: not null };
-        int level = live ? d!.Battery!.Value : 0;
-        var band = live ? Levels.Band(level) : LevelBand.Unknown;
-        var levelBrush = Theme.Brush(Theme.BandColor(band));
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(9, 0, 9, 0), Background = Brushes.Transparent };
+
+        if (d is { Connected: true, Pods: { } pods } && pods.View != PodView.None)
+        {
+            // Earbuds, shown the way Apple devices show them: one icon for the pair when the buds are level,
+            // one bud when only one is being worn, left and right separately when they differ.
+            switch (pods.View)
+            {
+                case PodView.Pair: Gauge(row, PodIcons.Element(PodIcons.Pair, fg), pods.Primary, fg); break;
+                case PodView.Left: Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg); break;
+                case PodView.Right: Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg); break;
+                case PodView.Separate:
+                    Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg);
+                    Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12);
+                    break;
+            }
+            if (pods.ShowCase) Gauge(row, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12);
+            row.ToolTip = $"{name}: {pods.Describe()}";
+            return row;
+        }
 
         var glyph = new TextBlock
         {
             Text = FlyoutWindow.GlyphFor(d?.Kind ?? DeviceKind.Generic),
             FontFamily = (FontFamily)Application.Current.Resources["Icons"],
-            FontSize = 15, Foreground = fg, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 15, Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
         };
+        Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg);
+        row.ToolTip = d is null || !d.Connected ? $"{name}: not connected" : $"{name}: {Levels.Text(d.Battery)}";
+        return row;
+    }
+
+    /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
+    static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0)
+    {
+        bool live = level is not null;
+        var levelBrush = Theme.Brush(Theme.BandColor(Levels.Band(level)));
+        icon.Opacity = 0.9;
+        icon.Margin = new Thickness(gapBefore, 0, 0, 0);
 
         // Battery gauge: outline, proportional fill, and the little terminal on the right.
         const double innerW = 19, innerH = 8;
         var fill = new Border
         {
-            Width = live ? Math.Max(2, innerW * level / 100.0) : 0, Height = innerH, CornerRadius = new CornerRadius(1.5),
+            Width = live ? Math.Max(2, innerW * level!.Value / 100.0) : 0, Height = innerH, CornerRadius = new CornerRadius(1.5),
             Background = levelBrush, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
         };
         var body = new Border
@@ -141,18 +172,15 @@ public sealed class TaskbarStrip : Window
             Text = live ? $"{level}%" : "–", Foreground = fg, Opacity = live ? 1 : 0.6,
             Margin = new Thickness(7, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center,
         };
-
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(9, 0, 9, 0), Background = Brushes.Transparent };
-        row.Children.Add(glyph);
+        row.Children.Add(icon);
         row.Children.Add(battery);
         row.Children.Add(text);
-        row.ToolTip = d is null || !d.Connected ? $"{name}: not connected" : $"{name}: {Levels.Text(d.Battery)}";
-        return row;
     }
 
     /// <summary>Keeps the strip glued to the taskbar; hides it when the taskbar is hidden or an app is full-screen.</summary>
     void Place(bool topmost = true)
     {
+        if (Sticky) return;
         if (!_wanted) { SetAvailable(true); Unhook(); HideStrip(); return; }
 
         IntPtr bar = FindWindowW("Shell_TrayWnd", null);

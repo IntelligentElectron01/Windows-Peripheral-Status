@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -65,8 +65,9 @@ public partial class App : Application
 
         if (shot)
         {
-            await TakeScreenshots(e.Args[shotArg + 1]);
-            Shutdown();
+            try { await TakeScreenshots(e.Args[shotArg + 1]); }
+            catch (Exception ex) { _c.Log(ex); }
+            finally { Environment.Exit(0); } // developer helper: always end, even if a render failed
             return;
         }
 
@@ -181,13 +182,23 @@ public partial class App : Application
             Save(ren, Path.Combine(dir, $"rename-{tag}.png"));
             ren.Close();
 
-            c.Change(s => s.For("DEMO00000002").Pinned = true);
-            var bar = new TaskbarStrip(c);
+            c.Change(s => { s.For("DEMO00000002").Pinned = true; s.For("DEMO00000005").Pinned = true; });
+            var bar = new TaskbarStrip(c) { Sticky = true };
             bar.Show();
             await Idle();
             Save(bar, Path.Combine(dir, $"strip-{tag}.png"));
+            // The other earbud layouts: one bud worn, uneven levels, one bud charging in its case.
+            for (int i = 1; i <= 3; i++)
+            {
+                c.Demo!.CyclePods();
+                await c.RefreshAsync();
+                await Idle();
+                Save(bar, Path.Combine(dir, $"strip-pods{i}-{tag}.png"));
+            }
+            c.Demo!.CyclePods();
+            await c.RefreshAsync();
             bar.Close();
-            c.Change(s => s.For("DEMO00000002").Pinned = false);
+            c.Change(s => { s.For("DEMO00000002").Pinned = false; s.For("DEMO00000005").Pinned = false; });
 
             // Tray icons at 2x so they can be inspected.
             SD.Color Sd(Color m) => SD.Color.FromArgb(255, m.R, m.G, m.B);

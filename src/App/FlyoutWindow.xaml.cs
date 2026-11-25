@@ -13,6 +13,8 @@ public sealed class DeviceRow
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string Glyph { get; init; }
+    /// <summary>Drawn icon used instead of the font glyph (earbuds).</summary>
+    public Geometry? Icon { get; init; }
     public required string LevelText { get; init; }
     public double Level { get; init; }
     public Visibility BarVisibility { get; init; }
@@ -154,7 +156,8 @@ public partial class FlyoutWindow : Window
         {
             Id = d.Id,
             Name = name,
-            Glyph = GlyphFor(d.Kind),
+            Glyph = d is { Connected: true, Pods: not null } ? "" : GlyphFor(d.Kind),
+            Icon = d is { Connected: true, Pods: { } shown } ? PodIcons.For(shown.View) : null,
             LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? pods.Short() : Levels.Text(d.Battery),
             Level = live ? d.Battery!.Value : 0,
             BarVisibility = live ? Visibility.Visible : Visibility.Collapsed,

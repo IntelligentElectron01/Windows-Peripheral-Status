@@ -38,7 +38,7 @@ if (args.Length > 0 && args[0] == "pods")
     var heard = await listener.ListenAsync(TimeSpan.FromSeconds(10));
     Console.WriteLine($"error: {listener.LastError ?? "none"}; broadcasts decoded: {heard.Count}; callbacks {BlePodsListener.Callbacks}, entries {BlePodsListener.Entries}, apple {BlePodsListener.AppleEntries}, diag {BlePodsListener.Diagnostic}");
     foreach (var g in heard.GroupBy(h => h.Levels).OrderByDescending(g => g.Max(h => h.Rssi)))
-        Console.WriteLine($"model {g.Key.Model:X4} rssi {g.Max(h => h.Rssi)} x{g.Count()} | {g.Key.Describe()}");
+        Console.WriteLine($"model {g.Key.Model:X4} rssi {g.Max(h => h.Rssi)} x{g.Count()} | {g.Key.Describe()} | view {g.Key.View} -> {g.Key.Short()}");
     return 0;
 }
 
@@ -136,11 +136,29 @@ Section("R1 Apple earbuds");
     var flipped = ApplePods.Parse(Adv(0x00, 0x98, 0x55))!;
     Check(flipped is { Left: 90, Right: 80, LeftCharging: false, RightCharging: true }, "left/right swap flag honoured");
     var partial = ApplePods.Parse(Adv(0x20, 0x8F, 0x0F))!;
-    Check(partial is { Left: null, Right: 80, Case: null } && partial.Lowest == 80, "unreported bud/case -> null; lowest ignores them");
+    Check(partial is { Left: null, Right: 80, Case: null } && partial.Primary == 80, "unreported bud/case -> null; lowest ignores them");
     Check(ApplePods.Parse(Adv(0x20, 0xAA, 0x0A))! is { Left: 100, Right: 100, Case: 100 }, "full = 100");
     Check(ApplePods.Parse([0x10, 0x05, 0x01, 0x18, 0x00, 0x00, 0x00, 0x00]) is null, "other Apple broadcasts (e.g. a phone) are ignored");
     Check(ApplePods.Parse([0x07, 0x19]) is null, "truncated data ignored");
-    Check(p.Short() == "L 80% · R 90%" && p.Describe() == "Left 80% (charging) · Right 90% · Case 50% (charging)", "display text");
+    Check(p.Describe() == "Left 80% (charging) · Right 90% · Case 50% (charging)", "detail text");
+
+    // How earbuds are presented (modelled on how Apple devices show them).
+    PodLevels P(int? l, int? r, bool le = false, bool re = false, int? c = null, bool lc = false) =>
+        new(0x2024, l, r, c, LeftCharging: lc, LeftInEar: le, RightInEar: re);
+    Check(P(80, 80, true, true) is { View: PodView.Pair, Primary: 80 } && P(80, 80, true, true).Short() == "80%", "both worn, same level -> one pair icon");
+    Check(P(70, 80, true, true) is { View: PodView.Pair, Primary: 70 }, "within 10 points still counts as a pair, showing the lower level");
+    Check(P(90, 40, true, true) is { View: PodView.Separate, Primary: 40 } && P(90, 40, true, true).Short() == "L 90% · R 40%", "levels far apart -> left and right shown separately");
+    Check(P(60, 60, false, true) is { View: PodView.Right, Primary: 60 } && P(60, 60, false, true).Short() == "Right 60%", "only the right bud worn -> right bud alone");
+    Check(P(30, 90, true, false) is { View: PodView.Left, Primary: 30 }, "only the left bud worn -> left bud alone");
+    Check(P(null, 80, false, true) is { View: PodView.Right, Primary: 80 }, "only one bud reporting -> that bud");
+    Check(P(50, null, false, true) is { View: PodView.Left, Primary: 50 }, "worn bud has no level -> fall back to the one that reports");
+    Check(P(80, 80) is { View: PodView.Pair }, "neither worn (both in case) -> pair");
+    Check(P(null, null) is { View: PodView.None, Primary: null }, "nothing reported -> nothing shown");
+    Check(P(100, 50, false, true, 70, true).ShowCase && !P(80, 80, true, true, 70).ShowCase, "case shown only while a bud is charging in it");
+    var worn = ApplePods.Parse(Adv(0x2B, 0x98, 0x05))!;
+    Check(worn is { LeftInEar: true, RightInEar: true }, "in-ear flags decoded");
+    var oneWorn = ApplePods.Parse(Adv(0x09, 0x8F, 0x0F))!;
+    Check(oneWorn is { LeftInEar: true, RightInEar: false, Left: 80, Right: null }, "in-ear flags follow the left/right swap");
 
     Check(WindowsDeviceSource.AppleModelFromInstanceId(@"BTHENUM\{0000111e-0000-1000-8000-00805f9b34fb}_VID&0001004c_PID&2024\7&1&0&AABBCCDDEEFF_C00000000") == 0x2024, "Apple product number read from instance ID");
     Check(WindowsDeviceSource.AppleModelFromInstanceId(@"BTHENUM\{0000111e-0000-1000-8000-00805f9b34fb}_VID&0002054C_PID&0F8A\7&1&0&AABBCCDDEEFF") is null, "non-Apple vendor ignored");

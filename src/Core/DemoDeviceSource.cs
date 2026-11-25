@@ -9,8 +9,32 @@ public sealed class DemoDeviceSource : IDeviceSource
         new("DEMO00000002", "Demo Mouse", DeviceKind.Mouse, true, 55),
         new("DEMO00000003", "Demo Headphones", DeviceKind.Headphones, true, 24),
         new("DEMO00000004", "Demo Speaker", DeviceKind.Speaker, true, null),
-        new("DEMO00000005", "Demo Earbuds", DeviceKind.Headphones, true, 70) { Pods = new PodLevels(0, 70, 80, 40, CaseCharging: true) },
+        new("DEMO00000005", "Demo Earbuds", DeviceKind.Headphones, true, 70) { Pods = new PodLevels(0, 70, 80, null, LeftInEar: true, RightInEar: true) },
     ];
+
+    /// <summary>Changes what the demo earbuds report, to try the different earbud layouts.</summary>
+    public void SetPods(PodLevels pods)
+    {
+        lock (_devices)
+            for (int i = 0; i < _devices.Count; i++)
+                if (_devices[i].Pods is not null)
+                    _devices[i] = _devices[i] with { Pods = pods, Battery = pods.Primary };
+    }
+
+    int _podsStep;
+
+    /// <summary>Steps the demo earbuds through: pair, right bud only, uneven levels, one bud charging in the case.</summary>
+    public void CyclePods()
+    {
+        PodLevels[] states =
+        [
+            new(0, 60, 60, null, RightInEar: true),
+            new(0, 90, 40, null, LeftInEar: true, RightInEar: true),
+            new(0, 100, 50, 70, LeftCharging: true, RightInEar: true),
+            new(0, 70, 80, null, LeftInEar: true, RightInEar: true),
+        ];
+        SetPods(states[_podsStep++ % states.Length]);
+    }
 
     public IReadOnlyList<DeviceReading> Scan() { lock (_devices) return _devices.ToList(); }
 
@@ -19,15 +43,24 @@ public sealed class DemoDeviceSource : IDeviceSource
     {
         lock (_devices)
             for (int i = 0; i < _devices.Count; i++)
-                if (_devices[i].Battery is int b)
+                if (_devices[i].Pods is { } p)
+                {
+                    var lower = p with { Left = Lower(p.Left), Right = Lower(p.Right) };
+                    _devices[i] = _devices[i] with { Pods = lower, Battery = lower.Primary };
+                }
+                else if (_devices[i].Battery is int b)
                     _devices[i] = _devices[i] with { Battery = Math.Max(0, b - points) };
+
+        int? Lower(int? v) => v is int x ? Math.Max(0, x - points) : null;
     }
 
     public void Recharge()
     {
         lock (_devices)
             for (int i = 0; i < _devices.Count; i++)
-                if (_devices[i].Battery is not null)
+                if (_devices[i].Pods is { } p)
+                    _devices[i] = _devices[i] with { Pods = p with { Left = 100, Right = 100 }, Battery = 100 };
+                else if (_devices[i].Battery is not null)
                     _devices[i] = _devices[i] with { Battery = 100 };
     }
 
