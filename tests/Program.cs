@@ -94,6 +94,18 @@ Section("R1 device reading");
     {
         var live = new WindowsDeviceSource().Scan();
         Check(live.All(d => d.Battery is null or (>= 0 and <= 100)), "live read-only scan returns sane levels");
+        var proc = System.Diagnostics.Process.GetCurrentProcess();
+        var cpu0 = proc.TotalProcessorTime;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var reused = new WindowsDeviceSource();
+        var firstScan = reused.Scan();   // full scan
+        var quick = reused.Scan();       // quick scan using cached names/types
+        Check(firstScan.Select(d => (d.Id, d.Name, d.Kind)).SequenceEqual(quick.Select(d => (d.Id, d.Name, d.Kind))),
+            "quick scan lists the same devices, names and types as a full scan");
+        proc.Refresh(); cpu0 = proc.TotalProcessorTime; sw.Restart();
+        for (int i = 0; i < 10; i++) reused.Scan();
+        proc.Refresh();
+        Console.WriteLine($"info: one quick scan takes {sw.ElapsedMilliseconds / 10.0:0.0} ms wall, {(proc.TotalProcessorTime - cpu0).TotalMilliseconds / 10.0:0.0} ms CPU");
         Console.WriteLine($"info: live scan found {live.Count} paired device(s), {live.Count(d => d.Connected)} connected, {live.Count(d => d.Connected && d.Battery is not null)} reporting a level");
     }
     catch (Exception e) { Check(false, "live scan threw " + e.GetType().Name + ": " + e.Message); }
@@ -238,6 +250,12 @@ Section("R8 rename/hide + R12 persistence");
     File.WriteAllText(store.PathOnDisk, "{\"Accent\":\"Purple\",\"LowBatteryThreshold\":99,\"Devices\":null}");
     var odd = new SettingsStore(dir).Load();
     Check(odd is { Accent: "Blue", LowBatteryThreshold: 50 } && odd.Devices is not null, "out-of-range values repaired");
+    Check(new Settings().PinnedDisplay == "Taskbar", "pinned devices show on the taskbar by default");
+    var pd = new Settings { PinnedDisplay = "Tray" };
+    store.Save(pd);
+    Check(new SettingsStore(dir).Load().PinnedDisplay == "Tray", "taskbar/tray choice survives a restart");
+    pd.PinnedDisplay = "Elsewhere"; pd.Normalize();
+    Check(pd.PinnedDisplay == "Taskbar", "unknown pinned-display value repaired");
 }
 
 // ---------------------------------------------------------------------------------------------

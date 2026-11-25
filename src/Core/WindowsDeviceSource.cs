@@ -23,30 +23,66 @@ public sealed partial class WindowsDeviceSource : IDeviceSource
     public sealed record Node(string InstanceId, string? Address, bool Present, string? Name, string? Class,
         int? Battery, bool? Connected, uint? ClassOfDevice);
 
-    public IReadOnlyList<DeviceReading> Scan() => Combine(ReadNodes());
+    /// <summary>Things about a node that almost never change (name, type), cached between scans.</summary>
+    sealed record Fixed(string? Address, string? Name, string? Class, uint? ClassOfDevice);
 
-    /// <summary>Raw device-tree nodes that belong to Bluetooth devices. Used by Scan and by --dump.</summary>
-    public static List<Node> ReadNodes()
+    /// <summary>Every Nth scan re-reads everything, so a device renamed in Windows is picked up.</summary>
+    const int FullScanEvery = 15;
+
+    readonly Dictionary<string, Fixed> _fixed = new(StringComparer.OrdinalIgnoreCase);
+    readonly List<Node> _hidNodes = new();
+    int _scans;
+
+    public IReadOnlyList<DeviceReading> Scan()
     {
+        lock (_fixed)
+            return Combine(ReadNodes(_fixed, _hidNodes, full: _scans++ % FullScanEvery == 0));
+    }
+
+    /// <summary>Raw device-tree nodes that belong to Bluetooth devices, read from scratch. Used by --dump and tests.</summary>
+    public static List<Node> ReadNodes() => ReadNodes(new(StringComparer.OrdinalIgnoreCase), new(), full: true);
+
+    /// <summary>
+    /// A quick scan reads only what changes (battery level, connected flag) and reuses cached names and types.
+    /// HID nodes are only used to tell mice from keyboards, so they are listed on full scans only.
+    /// </summary>
+    static List<Node> ReadNodes(Dictionary<string, Fixed> cache, List<Node> hidNodes, bool full)
+    {
+        if (full) { cache.Clear(); hidNodes.Clear(); }
         var nodes = new List<Node>();
         foreach (var enumerator in Enumerators)
         {
+            bool hid = enumerator == "HID";
+            if (hid && !full) continue;
             foreach (var id in DeviceIds(enumerator))
             {
-                var addr = AddressFromInstanceId(id);
-                if (addr is null) continue;
+                cache.TryGetValue(id, out var info);
+                if (info is null)
+                {
+                    var addr = AddressFromInstanceId(id);
+                    if (addr is null) { cache[id] = NotBluetooth; continue; }
+                }
+                else if (info.Address is null) continue;
+
                 bool present = CM_Locate_DevNodeW(out uint inst, id, 0) == 0;
                 if (!present && CM_Locate_DevNodeW(out inst, id, 1 /* phantom */) != 0) continue;
-                nodes.Add(new Node(id, addr, present,
-                    GetString(inst, KeyFriendlyName) ?? GetString(inst, KeyName),
-                    GetString(inst, KeyClass),
-                    GetByte(inst, KeyBattery),
-                    GetBool(inst, KeyConnected),
-                    GetUInt(inst, KeyClassOfDevice)));
+                if (info is null)
+                    cache[id] = info = new Fixed(AddressFromInstanceId(id),
+                        GetString(inst, KeyFriendlyName) ?? GetString(inst, KeyName),
+                        GetString(inst, KeyClass), GetUInt(inst, KeyClassOfDevice));
+
+                var node = new Node(id, info.Address, present, info.Name, info.Class,
+                    hid ? null : GetByte(inst, KeyBattery),
+                    IsRoot(id) ? GetBool(inst, KeyConnected) : null,
+                    info.ClassOfDevice);
+                (hid ? hidNodes : nodes).Add(node);
             }
         }
+        nodes.AddRange(hidNodes);
         return nodes;
     }
+
+    static readonly Fixed NotBluetooth = new(null, null, null, null);
 
     /// <summary>Groups nodes by Bluetooth address into one reading per physical device.</summary>
     public static IReadOnlyList<DeviceReading> Combine(IEnumerable<Node> nodes)
@@ -175,13 +211,20 @@ public sealed partial class WindowsDeviceSource : IDeviceSource
         return new string(buf).Split('\0', StringSplitOptions.RemoveEmptyEntries);
     }
 
+    [ThreadStatic] static byte[]? _scratch;
+
+    /// <summary>Reads a property in a single call using a reusable buffer (most values are a few bytes).</summary>
     static byte[]? GetRaw(uint inst, DevPropKey key, out uint type)
     {
-        uint size = 0;
-        int r = CM_Get_DevNode_PropertyW(inst, key, out type, null, ref size, 0);
-        if (r != 26 /* CR_BUFFER_SMALL */ || size == 0 || size > 4096) return null;
-        var buf = new byte[size];
-        return CM_Get_DevNode_PropertyW(inst, key, out type, buf, ref size, 0) == 0 ? buf : null;
+        var buf = _scratch ??= new byte[512];
+        uint size = (uint)buf.Length;
+        int r = CM_Get_DevNode_PropertyW(inst, key, out type, buf, ref size, 0);
+        if (r == 26 /* CR_BUFFER_SMALL */ && size is > 0 and <= 4096)
+        {
+            buf = new byte[size];
+            r = CM_Get_DevNode_PropertyW(inst, key, out type, buf, ref size, 0);
+        }
+        return r == 0 && size > 0 ? buf.AsSpan(0, (int)size).ToArray() : null;
     }
 
     static string? GetString(uint inst, DevPropKey key)

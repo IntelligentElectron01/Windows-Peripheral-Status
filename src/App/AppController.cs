@@ -25,6 +25,14 @@ public sealed class AppController
     public string? Error { get; private set; }
     public string ExePath { get; } = Environment.ProcessPath ?? "";
 
+    /// <summary>False when the taskbar strip cannot be shown (no taskbar found, or a vertical one); pins then fall back to tray icons.</summary>
+    public bool StripAvailable
+    {
+        get => _stripAvailable;
+        set { if (_stripAvailable == value) return; _stripAvailable = value; Updated?.Invoke(); }
+    }
+    bool _stripAvailable = true;
+
     public event Action? Updated;
     public event Action<Alert>? AlertRaised;
 

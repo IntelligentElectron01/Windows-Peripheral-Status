@@ -4,7 +4,7 @@ A small, free Windows 10 (1809+) / Windows 11 tray app that shows the battery le
 Everything stays on your PC: no account, no ads, no telemetry, no network access.
 
 - Battery % for Bluetooth mice, keyboards, headphones, earbuds, controllers and phones
-- Pin a device to give it its own tray icon showing the number (yellow under 50%, red under 20%)
+- Pin devices to show them in a strip on the taskbar with a battery gauge and percentage, or as numbered tray icons if you prefer (yellow under 50%, red under 20%)
 - Hover any tray icon to see every connected device
 - Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
 - 7-day battery history chart with a time-left estimate
@@ -33,9 +33,9 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 ## Use
 
 - **Left-click** the tray icon: open the panel. **Right-click**: refresh or exit.
-- **Pin** button on a row: that device gets its own tray icon.
+- **Pin** button on a row: that device appears on the taskbar. The strip hides while the taskbar is hidden or an app is full-screen.
 - **Click a row** or the **…** button: battery history, rename, hide.
-- **Gear** button: low-battery notification level, accent colour, hidden devices.
+- **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, hidden devices.
 
 ## Build from source (one command)
 

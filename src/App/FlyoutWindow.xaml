@@ -99,6 +99,13 @@
               <RadioButton x:Name="AccentSystem" Style="{StaticResource Chip}" Content="Windows accent" GroupName="accent" Click="Accent_Click"/>
             </StackPanel>
           </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Show pinned" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <RadioButton x:Name="PinTaskbar" Style="{StaticResource Chip}" Content="On taskbar" GroupName="pinmode" Click="PinMode_Click"/>
+              <RadioButton x:Name="PinTray" Style="{StaticResource Chip}" Content="As tray icons" GroupName="pinmode" Click="PinMode_Click"/>
+            </StackPanel>
+          </Grid>
           <StackPanel x:Name="HiddenPanel" Margin="16,12,8,0">
             <TextBlock Text="Hidden devices" Foreground="{DynamicResource Fg2}" FontSize="12"/>
             <ItemsControl x:Name="HiddenList" Focusable="False">

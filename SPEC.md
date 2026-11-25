@@ -8,7 +8,8 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 | ID | Requirement | Pass/fail check | Status |
 |----|-------------|-----------------|--------|
 | R1 | Battery % for paired Bluetooth devices; "No battery info" when not reported; UI says 2.4 GHz dongles unsupported | Paired devices show the same % as Windows Settings > Bluetooth; a device with no level shows "No battery info"; dongle note visible in flyout | AUTO. Live read-only scan returned 5 paired devices with correct types; one was connected and reported a level. Not yet compared by eye with Windows Settings (manual check 1). |
-| R2 | Pin a device → its own tray icon with %; several pins → several icons | Pin 2 devices: 2 tray icons each showing that device's number; unpin removes it | BUILT. Icon artwork checked from rendered images; live tray not yet seen (manual check 2). |
+| R2 | Pin a device → it shows on the taskbar. Default: a strip on the taskbar left of the clock area (icon, battery gauge, %) with all pinned devices. Alternative setting: one numbered tray icon per pinned device. | Pin 2 devices: both appear in the strip (or as 2 tray icons in tray mode); unpin removes them | BUILT. Artwork checked from rendered images; not yet seen live on the taskbar (manual check 2). Strip hides with an auto-hide taskbar and during full-screen apps; falls back to tray icons on a vertical taskbar. |
+| R13 | Low resource use while idle | `.\tools\measure.ps1` on the packaged app | Measured 2026-11-25 with one device pinned: 24.5 MB RAM in use (was 116), 0.03% of one CPU core (was 0.76%), 65 MB committed, 154 MB on disk. |
 | R3 | Tray icon yellow < 50%, red < 20% | Unit test at 100/50/49/20/19/0; visual check with simulated levels | AUTO; visual = manual check 2. |
 | R4 | Hovering a tray icon lists every connected device and level | Tooltip lists all connected devices, one per line | AUTO (text and 127-character Windows limit); hover = manual check 2. |
 | R5 | Low-battery notification for all connected devices at user threshold (10–50%), once per crossing | Falls to threshold → 1 notification; stays below → 0 more; recharges then falls → 1 more | AUTO; real toast = manual check 3. |
@@ -22,7 +23,7 @@ Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes aut
 
 ## Manual checks (the only things that need a person)
 1. Open the flyout; compare each connected device's % with Windows Settings > Bluetooth & devices.
-2. Pin two devices: two numbered tray icons appear; hover one and see all connected devices. Run `.\build.ps1 demo`, right-click its tray icon > "Demo: drain all by 10%" a few times: icons go yellow below 50 and red below 20.
+2. Pin two devices: both appear in a strip on the taskbar, left of the clock area; clicking it opens the flyout. In the gear panel switch "Show pinned" to "As tray icons": two numbered tray icons appear instead; hover one and see all connected devices. Run `.\build.ps1 demo`, right-click its tray icon > "Demo: drain all by 10%" a few times: icons go yellow below 50 and red below 20.
 3. Still in demo: keep draining until a device reaches 20%: exactly one notification per device. Switch on "Notify on disconnect", pin Demo Keyboard, choose "Demo: connect/disconnect keyboard": one notification.
 4. Rename a device (… > Rename), hide another (… > Hide), exit and restart: both stick; un-hide from the gear panel.
 5. Switch on "Start with Windows", sign out and in: icon appears, no window, no admin prompt.

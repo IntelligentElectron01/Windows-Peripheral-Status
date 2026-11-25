@@ -20,6 +20,8 @@ public sealed class Settings
     public bool NotifyOnDisconnect { get; set; }
     /// <summary>"Blue" (default) or "System" (Windows accent colour).</summary>
     public string Accent { get; set; } = "Blue";
+    /// <summary>Where pinned devices show: "Taskbar" (a strip on the taskbar, default) or "Tray" (one tray icon each).</summary>
+    public string PinnedDisplay { get; set; } = "Taskbar";
     public Dictionary<string, DevicePrefs> Devices { get; set; } = new();
 
     public DevicePrefs For(string id)
@@ -38,6 +40,7 @@ public sealed class Settings
     {
         LowBatteryThreshold = Math.Clamp(LowBatteryThreshold, MinThreshold, MaxThreshold);
         if (Accent != "System") Accent = "Blue";
+        if (PinnedDisplay != "Tray") PinnedDisplay = "Taskbar";
         Devices ??= new();
         foreach (var k in Devices.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList())
             Devices.Remove(k);

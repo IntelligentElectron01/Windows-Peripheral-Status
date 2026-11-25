@@ -14,6 +14,7 @@ public partial class App : Application
     AppController? _c;
     TrayManager? _tray;
     FlyoutWindow? _flyout;
+    TaskbarStrip? _strip;
     Mutex? _mutex;
     EventWaitHandle? _showSignal;
     readonly Dictionary<string, HistoryWindow> _historyWindows = new();
@@ -21,6 +22,8 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // The UI is a few rows of text; drawing it on the CPU avoids holding graphics-card memory for a tray app.
+        RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         var args = e.Args.Select(a => a.ToLowerInvariant()).ToList();
 
         // Developer helpers (no effect on normal use).
@@ -69,6 +72,12 @@ public partial class App : Application
 
         _tray = new TrayManager(_c);
         _flyout = new FlyoutWindow(_c);
+        _trim.Tick += (_, _) => { _trim.Stop(); TrimMemory(); };
+        _flyout.Closed_ += ScheduleTrim;
+        ScheduleTrim();
+
+        _strip = new TaskbarStrip(_c);
+        _strip.Clicked += () => _flyout.Toggle();
         _tray.OpenRequested += () => _flyout.Toggle();
         _tray.ExitRequested += Quit;
         _flyout.ExitRequested += Quit;
@@ -101,13 +110,33 @@ public partial class App : Application
         if (_historyWindows.TryGetValue(id, out var existing)) { existing.Activate(); return; }
         var w = new HistoryWindow(_c!, id);
         _historyWindows[id] = w;
-        w.Closed += (_, _) => _historyWindows.Remove(id);
+        w.Closed += (_, _) => { _historyWindows.Remove(id); ScheduleTrim(); };
         w.Show();
         w.Activate();
     }
 
+    // ---- memory: after the UI has been used, hand unused RAM back to Windows -------------------
+
+    readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(12) };
+
+    void ScheduleTrim() { _trim.Stop(); _trim.Start(); }
+
+    static void TrimMemory()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        // Tells Windows it may page out everything this app is not actively using. Pages come back on demand.
+        SetProcessWorkingSetSize(GetCurrentProcess(), -1, -1);
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+
     void Quit()
     {
+        _strip?.Close();
         _tray?.Dispose();
         _c?.Shutdown();
         Shutdown();
@@ -151,6 +180,14 @@ public partial class App : Application
             await Idle();
             Save(ren, Path.Combine(dir, $"rename-{tag}.png"));
             ren.Close();
+
+            c.Change(s => s.For("DEMO00000002").Pinned = true);
+            var bar = new TaskbarStrip(c);
+            bar.Show();
+            await Idle();
+            Save(bar, Path.Combine(dir, $"strip-{tag}.png"));
+            bar.Close();
+            c.Change(s => s.For("DEMO00000002").Pinned = false);
 
             // Tray icons at 2x so they can be inspected.
             SD.Color Sd(Color m) => SD.Color.FromArgb(255, m.R, m.G, m.B);

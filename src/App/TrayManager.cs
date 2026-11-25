@@ -48,7 +48,9 @@ public sealed class TrayManager : IDisposable
     {
         var s = _c.Settings;
         var pinned = s.Devices.Where(kv => kv.Value.Pinned && !kv.Value.Hidden).Select(kv => kv.Key).ToList();
-        var wanted = pinned.Count > 0 ? pinned : [""];
+        // Pinned devices get their own tray icons only in "Tray" mode, or if the taskbar strip can't be shown.
+        bool perDevice = pinned.Count > 0 && (s.PinnedDisplay == "Tray" || !_c.StripAvailable);
+        var wanted = perDevice ? pinned : [""];
         string tip = _c.TooltipText();
         int size = WF.SystemInformation.SmallIconSize.Width;
 
@@ -94,8 +96,8 @@ public sealed class TrayManager : IDisposable
                 e.Handle = handle;
                 e.Key = key;
             }
-            e.Icon.Text = tip;
-            e.Icon.Visible = true;
+            if (e.Icon.Text != tip) e.Icon.Text = tip;
+            if (!e.Icon.Visible) e.Icon.Visible = true;
         }
     }
 

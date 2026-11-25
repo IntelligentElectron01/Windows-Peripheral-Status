@@ -37,6 +37,8 @@ public partial class FlyoutWindow : Window
     /// <summary>Keeps the flyout open when it loses focus (used for automated screenshots).</summary>
     public bool Sticky { get; set; }
 
+    /// <summary>Raised when the flyout hides, so the app can hand unused memory back to Windows.</summary>
+    public event Action? Closed_;
     public event Action? ExitRequested;
     public event Action<string>? HistoryRequested;
     public event Action<string>? RenameRequested;
@@ -45,8 +47,9 @@ public partial class FlyoutWindow : Window
     {
         InitializeComponent();
         _c = c;
-        _c.Updated += Rebuild;
-        Theme.Changed += Rebuild;
+        // While hidden there is nothing to draw, so skip the work; ShowFlyout rebuilds on open.
+        _c.Updated += () => { if (IsVisible) Rebuild(); };
+        Theme.Changed += () => { if (IsVisible) Rebuild(); };
         _clock.Tick += (_, _) => UpdateSyncText();
         Deactivated += (_, _) => { if (!Sticky) HideFlyout(); };
         SizeChanged += (_, _) => Place();
@@ -79,6 +82,8 @@ public partial class FlyoutWindow : Window
         _hiddenAt = DateTime.UtcNow;
         _clock.Stop();
         Hide();
+        DeviceList.ItemsSource = null; // let the row visuals be freed while hidden
+        Closed_?.Invoke();
     }
 
     /// <summary>Sits the flyout in the corner of the screen next to the taskbar, wherever the taskbar is.</summary>
@@ -132,6 +137,8 @@ public partial class FlyoutWindow : Window
         ThresholdText.Text = $"Notify at {s.LowBatteryThreshold}%";
         AccentBlue.IsChecked = s.Accent != "System";
         AccentSystem.IsChecked = s.Accent == "System";
+        PinTaskbar.IsChecked = s.PinnedDisplay != "Tray";
+        PinTray.IsChecked = s.PinnedDisplay == "Tray";
         UpdateSyncText();
         _loading = false;
     }
@@ -155,13 +162,13 @@ public partial class FlyoutWindow : Window
             GlyphBrush = pinned && live ? levelBrush : Theme.Res("Fg2"),
             PinBrush = pinned ? Theme.Res("Accent") : Theme.Res("Fg2"),
             PinGlyph = pinned ? "" : "",
-            PinTip = pinned ? "Unpin from the tray" : "Pin to the tray as its own icon",
+            PinTip = pinned ? "Unpin" : _c.Settings.PinnedDisplay == "Tray" ? "Pin to the tray as its own icon" : "Pin to the taskbar",
             RowTip = $"{name} — click for battery history",
             Fade = d.Connected ? 1 : 0.55,
         };
     }
 
-    static string GlyphFor(DeviceKind k) => k switch
+    public static string GlyphFor(DeviceKind k) => k switch
     {
         DeviceKind.Mouse => "",
         DeviceKind.Keyboard => "",
@@ -260,6 +267,12 @@ public partial class FlyoutWindow : Window
         string mode = AccentSystem.IsChecked == true ? "System" : "Blue";
         _c.Change(s => s.Accent = mode);
         Theme.Apply(mode);
+    }
+
+    void PinMode_Click(object sender, RoutedEventArgs e)
+    {
+        string mode = PinTray.IsChecked == true ? "Tray" : "Taskbar";
+        _c.Change(s => s.PinnedDisplay = mode);
     }
 
     void Exit_Click(object sender, RoutedEventArgs e) => ExitRequested?.Invoke();

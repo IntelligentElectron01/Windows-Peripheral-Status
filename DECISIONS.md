@@ -22,4 +22,9 @@ One line each: decision — why.
 - **Polling every 30 seconds** — simple and reliable across sleep/Bluetooth toggles; the read is a few milliseconds.
 - **Low-battery alert fires at or below the threshold and re-arms 2 points above it** — stops repeat alerts when a level wobbles at the edge.
 - **`--demo` mode with made-up devices and its own data folder** — lets colours and notifications be tested in a minute instead of waiting for real batteries to drain.
+- **Pinned devices show in a strip on the taskbar by default (user request); per-device tray icons remain as a setting** — Windows 11 has no supported way to add content to the taskbar, so the strip is an always-on-top window that follows the taskbar. It reads the taskbar's position only and changes nothing in Windows.
+- **Strip follows the taskbar through a Windows "this window moved" notification plus a 2-second safety timer** — polling five times a second kept the CPU awake for nothing.
+- **Quick scans read only battery and connected state; names and types are cached and re-read every 15th scan** — cut a scan from 45 ms to 3 ms of CPU.
+- **Software rendering, non-concurrent GC, Windows language tables instead of ICU, and handing unused memory back after the UI closes** — together took idle RAM in use from 116 MB to about 25 MB. Cost: the flyout takes a fraction of a second longer to open after a long idle.
+- **Not done, needs the user's call:** a build that relies on an installed .NET runtime (154 MB on disk becomes about 1 MB, but friends must install .NET first), and a native rewrite without WPF (about 5 MB RAM and 2 MB on disk, but the interface would be rebuilt from scratch and new build tools downloaded).
 - **Accent colour is a setting (default blue `#2F7FDB`, or Windows accent)** — user request.
