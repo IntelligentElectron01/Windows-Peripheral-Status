@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,19 +13,19 @@ namespace BTBatteryIndicator;
 
 /// <summary>
 /// A small pill that sits on the taskbar, just left of the clock area, showing each pinned device
-/// with a battery gauge and percentage. Windows 11 has no official way to add things to the taskbar,
-/// so this is an ordinary always-on-top window that follows the taskbar's position. It only reads
-/// where the taskbar is; it never changes the taskbar or any Windows setting.
+/// with a battery gauge and percentage. Windows 11 has no official way to add things to the taskbar
+/// (and draws over any window placed inside it), so this is an always-on-top window that follows the
+/// taskbar's position. It only reads where the taskbar is; it never changes the taskbar or any Windows setting.
 /// </summary>
 public sealed class TaskbarStrip : Window
 {
     readonly AppController _c;
     readonly Border _pill = new() { CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1.5), Padding = new Thickness(4, 0, 4, 0) };
     readonly StackPanel _items = new() { Orientation = Orientation.Horizontal };
-    // Slow safety-net timer; real-time following of the taskbar is event-driven (see Hook) so the app can sleep.
+    // Slow safety-net timer (z-order, tray width changes). Movement itself is followed frame by frame, see the glide below.
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
-    readonly WinEventProc _onTaskbarMoved;
-    IntPtr _hwnd, _hook, _hookedBar, _ownerBar;
+    readonly WinEventProc _onExplorerMoved;
+    IntPtr _hwnd, _hook, _hookedBar;
     int _lastX = int.MinValue, _lastY = int.MinValue;
     string _builtKey = "";
     bool _wanted;
@@ -33,7 +34,8 @@ public sealed class TaskbarStrip : Window
     /// <summary>Stay visible wherever it is, ignoring the taskbar (used for automated screenshots).</summary>
     public bool Sticky { get; set; }
 
-    public event Action? Clicked;
+    /// <summary>Raised with the device ID of the item that was clicked, or null for the strip's edge.</summary>
+    public event Action<string?>? Clicked;
 
     public TaskbarStrip(AppController c)
     {
@@ -58,7 +60,7 @@ public sealed class TaskbarStrip : Window
         _pill.Height = 32;
         Content = _pill;
 
-        MouseLeftButtonUp += (_, _) => Clicked?.Invoke();
+        MouseLeftButtonUp += (_, e) => Clicked?.Invoke(ItemIdAt(e.OriginalSource as DependencyObject));
         SourceInitialized += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
@@ -66,11 +68,15 @@ public sealed class TaskbarStrip : Window
             long ex = GetWindowLongPtrW(_hwnd, -20).ToInt64();
             SetWindowLongPtrW(_hwnd, -20, new IntPtr(ex | 0x08000000L /* NOACTIVATE */ | 0x00000080L /* TOOLWINDOW */));
         };
-        _onTaskbarMoved = (_, _, hwnd, idObject, _, _, _) => { if (hwnd == _hookedBar && idObject == 0) { Place(topmost: false); FollowTaskbar(); } };
+        _onExplorerMoved = (_, _, hwnd, idObject, _, _, _) => { if (hwnd == _hookedBar && idObject == 0) StartGlide(); };
         _timer.Tick += (_, _) => Place();
         _c.Updated += Rebuild;
         Theme.Changed += Rebuild;
-        Closed += (_, _) => { _timer.Stop(); Unhook(); if (_following) CompositionTarget.Rendering -= OnFrame; _c.Updated -= Rebuild; Theme.Changed -= Rebuild; };
+        Closed += (_, _) =>
+        {
+            _timer.Stop(); Unhook();
+            _c.Updated -= Rebuild; Theme.Changed -= Rebuild;
+        };
         Rebuild();
     }
 
@@ -79,7 +85,7 @@ public sealed class TaskbarStrip : Window
         var s = _c.Settings;
         var pinned = s.Devices.Where(kv => kv.Value.Pinned && !kv.Value.Hidden)
             .Select(kv => (Id: kv.Key, Name: s.DisplayName(kv.Key, kv.Value.LastKnownName ?? "Bluetooth device"),
-                           Dev: _c.Devices.FirstOrDefault(d => d.Id == kv.Key)))
+                           Dev: _c.Devices.FirstOrDefault(d => d.Id == kv.Key), Kind: kv.Value.LastKnownKind))
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         _wanted = s.PinnedDisplay == "Taskbar" && pinned.Count > 0;
 
@@ -87,7 +93,7 @@ public sealed class TaskbarStrip : Window
 
         // Most 30-second scans change nothing; skip rebuilding the visuals when that is the case.
         string key = $"{_wanted}|{_lightTaskbar}|{Theme.Accent}|{Theme.Dark}|" + string.Join(";",
-            pinned.Select(p => $"{p.Id},{p.Name},{p.Dev?.Kind},{p.Dev?.Connected},{p.Dev?.Battery},{p.Dev?.Pods}"));
+            pinned.Select(p => $"{p.Id},{p.Name},{p.Kind},{p.Dev?.Kind},{p.Dev?.Connected},{p.Dev?.Battery},{p.Dev?.Pods},{p.Dev?.Charging},{_c.IsConnecting(p.Id)}"));
         if (key == _builtKey) { Place(); return; }
         _builtKey = key;
         _timer.IsEnabled = _wanted;
@@ -103,14 +109,14 @@ public sealed class TaskbarStrip : Window
         {
             if (i > 0)
                 _items.Children.Add(new Border { Width = 1, Height = 18, Background = fg, Opacity = 0.22, VerticalAlignment = VerticalAlignment.Center });
-            _items.Children.Add(MakeItem(pinned[i].Name, pinned[i].Dev, fg));
+            _items.Children.Add(MakeItem(pinned[i].Id, pinned[i].Name, pinned[i].Dev, pinned[i].Kind, fg));
         }
         Place();
     }
 
-    FrameworkElement MakeItem(string name, DeviceReading? d, Brush fg)
+    FrameworkElement MakeItem(string id, string name, DeviceReading? d, DeviceKind lastKind, Brush fg)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(9, 0, 9, 0), Background = Brushes.Transparent };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(9, 0, 9, 0), Background = Brushes.Transparent, Tag = id };
 
         if (d is { Connected: true, Pods: { } pods } && pods.View != PodView.None)
         {
@@ -133,21 +139,24 @@ public sealed class TaskbarStrip : Window
 
         var glyph = new TextBlock
         {
-            Text = FlyoutWindow.GlyphFor(d?.Kind ?? DeviceKind.Generic),
+            Text = FlyoutWindow.GlyphFor(d?.Kind ?? (lastKind == DeviceKind.Generic && id.StartsWith("LOGI", StringComparison.Ordinal) ? DeviceKind.Mouse : lastKind)),
             FontFamily = (FontFamily)Application.Current.Resources["Icons"],
             FontSize = 15, Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
         };
-        Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg);
-        row.ToolTip = d is null || !d.Connected ? $"{name}: not connected" : $"{name}: {Levels.Text(d.Battery)}";
+        bool connecting = _c.IsConnecting(id);
+        Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg, placeholder: connecting ? "…" : "–");
+        row.ToolTip = connecting ? $"{name}: connecting…"
+            : d is null || !d.Connected ? $"{name}: not connected. Click to try to connect."
+            : $"{name}: {Levels.Text(d.Battery)}{(d.Charging ? " (charging)" : "")}";
         return row;
     }
 
     /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
-    static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0)
+    static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–")
     {
         bool live = level is not null;
         var levelBrush = Theme.Brush(Theme.BandColor(Levels.Band(level)));
-        icon.Opacity = 0.9;
+        icon.Opacity = live ? 0.9 : 0.55;
         icon.Margin = new Thickness(gapBefore, 0, 0, 0);
 
         // Battery gauge: outline, proportional fill, and the little terminal on the right.
@@ -169,7 +178,7 @@ public sealed class TaskbarStrip : Window
 
         var text = new TextBlock
         {
-            Text = live ? $"{level}%" : "–", Foreground = fg, Opacity = live ? 1 : 0.6,
+            Text = live ? $"{level}%" : placeholder, Foreground = fg, Opacity = live ? 1 : 0.6,
             Margin = new Thickness(7, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center,
         };
         row.Children.Add(icon);
@@ -177,51 +186,62 @@ public sealed class TaskbarStrip : Window
         row.Children.Add(text);
     }
 
-    /// <summary>Keeps the strip glued to the taskbar; hides it when the taskbar is hidden or an app is full-screen.</summary>
-    void Place(bool topmost = true)
+    /// <summary>Which pinned device's item a click landed on.</summary>
+    static string? ItemIdAt(DependencyObject? o)
+    {
+        while (o is not null)
+        {
+            if (o is StackPanel { Tag: string id }) return id;
+            o = o is Visual ? VisualTreeHelper.GetParent(o) : LogicalTreeHelper.GetParent(o);
+        }
+        return null;
+    }
+
+    // ---- staying on the taskbar ----------------------------------------------------------------------
+
+    /// <summary>Puts the strip where it belongs for the taskbar's current position.</summary>
+    void Place(bool raise = true) => MoveTo(null, raise);
+
+    /// <param name="barTopOverride">Use this taskbar top instead of the measured one (the glide passes its smoothed estimate).</param>
+    /// <param name="raise">Also bring the strip to the front.</param>
+    void MoveTo(double? barTopOverride, bool raise)
     {
         if (Sticky) return;
         if (!_wanted) { SetAvailable(true); Unhook(); HideStrip(); return; }
 
         IntPtr bar = FindWindowW("Shell_TrayWnd", null);
         if (bar == IntPtr.Zero || !GetWindowRect(bar, out RECT tb)) { SetAvailable(false); Unhook(); HideStrip(); return; }
-        Hook(bar);
         int barW = tb.Right - tb.Left, barH = tb.Bottom - tb.Top;
-        if (barH > barW) { SetAvailable(false); HideStrip(); return; } // vertical taskbar: fall back to tray icons
+        if (barH > barW) { SetAvailable(false); Unhook(); HideStrip(); return; } // vertical taskbar: fall back to tray icons
         SetAvailable(true);
+        Hook(bar);
 
-        // Windows takes the taskbar out of the always-on-top group while a full-screen app covers it, and puts it
-        // back when the taskbar is shown again. Following that flag means the strip shows exactly when the taskbar does.
-        bool barOnTop = (GetWindowLongPtrW(bar, -20).ToInt64() & 0x8L /* TOPMOST */) != 0;
-        if (!barOnTop) { Park(); return; }
+        // A taskbar set to auto-hide tells the truth through its position: when it is off screen so is the strip.
+        // A fixed taskbar never moves, so there the strip steps aside while a full-screen app, game or presentation
+        // is covering it.
+        if (!IsAutoHide() && SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4) { Park(); return; }
 
-        // Auto-hide taskbar: the strip is never hidden; it simply rides along with the taskbar, off the edge of
-        // the screen and back, so there is nothing to blink when the taskbar starts to move.
+        // The strip is never hidden while wanted (hiding and re-showing a window blinks); it rides along with the
+        // taskbar, off the edge of the screen and back.
         if (!IsVisible) Show();
         if (_hwnd == IntPtr.Zero) return;
-
-        // Make the taskbar this window's owner. Windows always draws an owned window in front of its owner, so the
-        // strip can no longer end up behind the taskbar when the taskbar slides in or is clicked.
-        if (_ownerBar != bar)
-        {
-            SetWindowLongPtrW(_hwnd, -8 /* owner */, bar);
-            _ownerBar = bar;
-            topmost = true;
-        }
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         int w = (int)Math.Ceiling(ActualWidth * scale), h = (int)Math.Ceiling(ActualHeight * scale);
         IntPtr tray = FindWindowExW(bar, IntPtr.Zero, "TrayNotifyWnd", null);
         int rightEdge = tray != IntPtr.Zero && GetWindowRect(tray, out RECT tr) && tr.Left > tb.Left ? tr.Left : tb.Right - (int)(280 * scale);
         int x = Math.Max(tb.Left, rightEdge - w - (int)(8 * scale));
-        int y = tb.Top + (barH - h) / 2;
-        if (!topmost && x == _lastX && y == _lastY) return;
+        int y = (int)Math.Round(barTopOverride ?? tb.Top) + (barH - h) / 2;
+        if (_gliding) return;   // the glide thread owns the position while the taskbar is moving
+        if (!raise && x == _lastX && y == _lastY) return;
         _lastX = x; _lastY = y;
-        SetWindowPos(_hwnd, new IntPtr(-1) /* topmost */, x, y, 0, 0, 0x0001 /* NOSIZE */ | 0x0010 /* NOACTIVATE */);
-        if (topmost) SetWindowPos(_hwnd, IntPtr.Zero /* front of its group */, 0, 0, 0, 0, 0x0001 | 0x0002 /* NOMOVE */ | 0x0010);
+        // While gliding, only move: re-ordering windows involves Explorer, which is busy animating the taskbar and
+        // would hold this call up for a noticeable fraction of the slide.
+        if (raise) SetWindowPos(_hwnd, new IntPtr(-1) /* always on top */, x, y, 0, 0, 0x0001 /* NOSIZE */ | 0x0010 /* NOACTIVATE */);
+        else SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
     }
 
-    /// <summary>Moves the strip off screen without hiding it (hiding and re-showing a window causes a visible blink).</summary>
+    /// <summary>Moves the strip off screen without hiding it.</summary>
     void Park()
     {
         if (_hwnd == IntPtr.Zero || !IsVisible || _lastX == -32000) return;
@@ -229,29 +249,107 @@ public sealed class TaskbarStrip : Window
         SetWindowPos(_hwnd, IntPtr.Zero, -32000, -32000, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010);
     }
 
-    // While the taskbar is sliding, reposition on every screen frame so the strip moves in step with it.
-    bool _following;
-    long _followUntil;
-
-    void FollowTaskbar()
-    {
-        _followUntil = Environment.TickCount64 + 700;
-        if (_following) return;
-        _following = true;
-        CompositionTarget.Rendering += OnFrame;
-    }
-
-    void OnFrame(object? sender, EventArgs e)
-    {
-        int beforeY = _lastY;
-        Place(topmost: false);
-        if (_lastY != beforeY) _followUntil = Environment.TickCount64 + 700; // still moving
-        if (Environment.TickCount64 < _followUntil) return;
-        CompositionTarget.Rendering -= OnFrame;
-        _following = false;
-    }
-
     void HideStrip() { if (IsVisible) { Hide(); _lastX = int.MinValue; } }
+
+    // ---- gliding with the taskbar while it slides ---------------------------------------------------
+    //
+    // Windows moves an auto-hiding taskbar in small jumps about 30 times a second. Copying those jumps a moment
+    // late makes the strip visibly trail and judder. Instead, while the taskbar is moving, the strip is moved
+    // once per screen refresh to where the taskbar is heading: its last measured position plus its measured
+    // speed. The result is a smooth slide that stays locked to the taskbar at whatever speed Windows animates it.
+    //
+    // This runs on its own short-lived thread, timed by the screen's refresh, because the app's normal drawing
+    // loop goes to sleep while the strip is off screen (which is exactly when a reveal starts).
+
+    volatile bool _gliding;
+
+    void StartGlide()
+    {
+        if (!_wanted || Sticky || _gliding || _hwnd == IntPtr.Zero || !IsVisible) return;
+        IntPtr bar = _hookedBar, hwnd = _hwnd;
+        if (bar == IntPtr.Zero || !GetWindowRect(bar, out RECT tb) || _lastX is int.MinValue or -32000) return;
+        var screen = System.Windows.Forms.Screen.FromHandle(bar).Bounds;
+        int barH = tb.Bottom - tb.Top, x = _lastX;
+        int offset = (barH - (int)Math.Ceiling(ActualHeight * VisualTreeHelper.GetDpi(this).DpiScaleX)) / 2;
+        int shownTop = screen.Bottom - barH, hiddenTop = screen.Bottom - 2;
+        int startTop = _lastY - offset;   // where the taskbar was when the strip was last placed
+        _gliding = true;
+
+        var thread = new Thread(() =>
+        {
+            try { Glide(hwnd, bar, x, offset, shownTop, hiddenTop, startTop); }
+            finally { _gliding = false; }
+        }) { IsBackground = true, Name = "strip-glide", Priority = ThreadPriority.AboveNormal };
+        thread.Start();
+    }
+
+    void Glide(IntPtr hwnd, IntPtr bar, int x, int offset, int shownTop, int hiddenTop, int startTop)
+    {
+        var clock = Stopwatch.StartNew();
+        int seenTop = startTop, prevTop = startTop, lastY = int.MinValue;
+        double seenAt = -31, speed = 0;          // ms; pixels per ms, positive = moving down (hiding)
+
+        while (true)
+        {
+            if (!GetWindowRect(bar, out RECT tb)) return;
+            double now = clock.Elapsed.TotalMilliseconds;
+            if (tb.Top != seenTop)
+            {
+                double measured = (tb.Top - seenTop) / Math.Max(1, now - seenAt);
+                // Blend with the earlier estimate so one late or early jump does not jerk the strip.
+                speed = speed == 0 || Math.Sign(measured) != Math.Sign(speed) ? measured : speed * 0.5 + measured * 0.5;
+                prevTop = seenTop; seenTop = tb.Top; seenAt = now;
+            }
+
+            double sinceJump = now - seenAt;
+            bool settled = sinceJump > 110;
+            double top = seenTop;
+            if (!settled)
+            {
+                // Fill in the motion between the taskbar's jumps: move at its measured speed from the last jump,
+                // never more than one jump ahead of what was measured, and never past where the taskbar can
+                // actually be (fully shown, or tucked away at the screen edge).
+                double limit = Math.Abs(seenTop - prevTop);
+                top = Math.Clamp(seenTop + Math.Clamp(speed * sinceJump * 0.8, -limit, limit), shownTop, hiddenTop);
+            }
+            int y = (int)Math.Round(top) + offset;
+            if (y != lastY)
+            {
+                // Move only: re-ordering windows involves Explorer, which is busy animating and would stall this call.
+                SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+                lastY = y; _lastY = y;
+            }
+            if (settled && sinceJump > 400) return;   // quiet for a moment: done
+            if (DwmFlush() != 0) Thread.Sleep(8);      // wait for the next screen refresh
+        }
+    }
+
+    void StopGlide() { }
+    /// <summary>Asks Windows to say when Explorer moves a window, which is how a slide is noticed the moment it starts.</summary>
+    void Hook(IntPtr bar)
+    {
+        if (bar == _hookedBar && _hook != IntPtr.Zero) return;
+        Unhook();
+        // Any Explorer thread may be the one that moves the taskbar, so listen to the whole Explorer process
+        // and ignore everything that is not the taskbar window itself.
+        GetWindowThreadProcessId(bar, out uint pid);
+        _hook = SetWinEventHook(0x800B, 0x800B /* object location change */, IntPtr.Zero, _onExplorerMoved, pid, 0, 0);
+        _hookedBar = bar;
+    }
+
+    void Unhook()
+    {
+        if (_hook != IntPtr.Zero) UnhookWinEvent(_hook);
+        _hook = IntPtr.Zero;
+        _hookedBar = IntPtr.Zero;
+        StopGlide();
+    }
+
+    void SetAvailable(bool available)
+    {
+        if (_c.StripAvailable == available) return;
+        _c.StripAvailable = available;
+    }
 
     /// <summary>The taskbar's rectangle in screen pixels if it is currently showing on screen, otherwise null.</summary>
     public static System.Drawing.Rectangle? VisibleTaskbar()
@@ -264,30 +362,6 @@ public sealed class TaskbarStrip : Window
         return on.Width * (long)on.Height >= rect.Width * (long)rect.Height * 0.8 ? rect : null;
     }
 
-    /// <summary>Asks Windows to tell us when the taskbar moves (auto-hide sliding in and out), instead of polling.</summary>
-    void Hook(IntPtr bar)
-    {
-        if (bar == _hookedBar && _hook != IntPtr.Zero) return;
-        Unhook();
-        // Limited to the taskbar's own thread, so unrelated Explorer windows don't wake this app.
-        uint thread = GetWindowThreadProcessId(bar, out uint pid);
-        _hook = SetWinEventHook(0x800B, 0x800B /* object location change */, IntPtr.Zero, _onTaskbarMoved, pid, thread, 0);
-        _hookedBar = bar;
-    }
-
-    void Unhook()
-    {
-        if (_hook != IntPtr.Zero) UnhookWinEvent(_hook);
-        _hook = IntPtr.Zero;
-        _hookedBar = IntPtr.Zero;
-    }
-
-    void SetAvailable(bool available)
-    {
-        if (_c.StripAvailable == available) return;
-        _c.StripAvailable = available;
-    }
-
     static bool ReadSystemLight()
     {
         try
@@ -298,7 +372,16 @@ public sealed class TaskbarStrip : Window
         catch { return false; }
     }
 
+    static bool IsAutoHide()
+    {
+        var d = new APPBARDATA { cbSize = (uint)Marshal.SizeOf<APPBARDATA>() };
+        return (SHAppBarMessage(4 /* get state */, ref d).ToUInt64() & 1) != 0;
+    }
+
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct APPBARDATA { public uint cbSize; public IntPtr hWnd; public uint uCallbackMessage, uEdge; public RECT rc; public IntPtr lParam; }
+
+    delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string? name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string? name);
@@ -306,9 +389,10 @@ public sealed class TaskbarStrip : Window
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
-
-    delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
     [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint pid, uint thread, uint flags);
     [DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hook);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("shell32.dll")] static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
+    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
 }

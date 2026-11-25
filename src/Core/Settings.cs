@@ -9,6 +9,8 @@ public sealed class DevicePrefs
     public bool Pinned { get; set; }
     /// <summary>Last name Windows reported, so hidden/disconnected devices can still be listed.</summary>
     public string? LastKnownName { get; set; }
+    /// <summary>Last device type seen, so a pinned device keeps its icon while it is away.</summary>
+    public DeviceKind LastKnownKind { get; set; }
 }
 
 public sealed class Settings

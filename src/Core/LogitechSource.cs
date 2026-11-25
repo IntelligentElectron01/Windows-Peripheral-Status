@@ -107,6 +107,10 @@ public sealed partial class LogitechSource(Func<bool>? enabled = null) : IDevice
     /// <summary>Battery level moves slowly; asking every two minutes keeps radio and CPU use negligible.</summary>
     public static readonly TimeSpan PollEvery = TimeSpan.FromMinutes(2);
     const int TimeoutMs = 350;
+    /// <summary>While something is not answering (asleep, or not found yet), look again on the next scan instead.</summary>
+    public static readonly TimeSpan RetryEvery = TimeSpan.FromSeconds(25);
+    /// <summary>An idle mouse goes to sleep and stops answering. Keep showing its last level this long before calling it disconnected.</summary>
+    public static readonly TimeSpan AsleepGrace = TimeSpan.FromMinutes(45);
 
     sealed class Known
     {
@@ -115,6 +119,7 @@ public sealed partial class LogitechSource(Func<bool>? enabled = null) : IDevice
         public ushort BatteryFeature;
         public byte BatteryIndex;
         public int? LastLevel;
+        public DateTime LastReply;
     }
 
     readonly Dictionary<string, Known> _known = new(StringComparer.OrdinalIgnoreCase);
@@ -129,12 +134,17 @@ public sealed partial class LogitechSource(Func<bool>? enabled = null) : IDevice
         if (enabled is not null && !enabled()) { _next = DateTime.MinValue; return _cache = []; }
         var now = DateTime.UtcNow;
         if (now < _next) return _cache;
-        _next = now + PollEvery;
-        lock (_known) return _cache = Poll();
+        lock (_known)
+        {
+            _cache = Poll(now, out bool allAnswered);
+            _next = now + (allAnswered ? PollEvery : RetryEvery);
+            return _cache;
+        }
     }
 
-    List<DeviceReading> Poll()
+    List<DeviceReading> Poll(DateTime now, out bool allAnswered)
     {
+        allAnswered = true;
         Trace.Clear();
         var result = new List<DeviceReading>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -150,14 +160,16 @@ public sealed partial class LogitechSource(Func<bool>? enabled = null) : IDevice
                 if (k is null)
                 {
                     k = Probe(ch, index, $"LOGI{pid:X4}{index:X2}");
-                    if (k is null) continue;
+                    if (k is null) { if (index != 0xFF) allAnswered = false; continue; }
                     _known[key] = k;
                 }
                 var level = ReadBattery(ch, index, k);
                 Trace.Add($"{pid:X4} #{index}: {k.Name} feature {k.BatteryFeature:X4} -> {(level is null ? "no reply" : $"{level.Value.Percent}%{(level.Value.Charging ? " charging" : "")}")}");
-                if (level is not null) k.LastLevel = level.Value.Percent;
-                result.Add(new DeviceReading(k.Id, k.Name, k.Kind, level is not null, level?.Percent ?? k.LastLevel)
-                    { Charging = level?.Charging ?? false });
+                if (level is not null) { k.LastLevel = level.Value.Percent; k.LastReply = now; }
+                else allAnswered = false;
+                bool asleep = level is null && k.LastLevel is not null && now - k.LastReply < AsleepGrace;
+                result.Add(new DeviceReading(k.Id, k.Name, k.Kind, level is not null || asleep, level?.Percent ?? k.LastLevel)
+                    { Charging = level?.Charging ?? false, SleepsWhenIdle = true });
             }
         }
         // Receiver unplugged: forget its devices so they disappear from the list.

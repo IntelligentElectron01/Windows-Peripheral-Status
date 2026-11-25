@@ -11,6 +11,8 @@ public sealed record DeviceReading(string Id, string Name, DeviceKind Kind, bool
     public PodLevels? Pods { get; init; }
     /// <summary>True when the device says it is on charge (only some device types report this).</summary>
     public bool Charging { get; init; }
+    /// <summary>True for devices that go quiet to save power when idle (receiver mice and keyboards). Silence from these is not a disconnect.</summary>
+    public bool SleepsWhenIdle { get; init; }
 }
 
 public interface IDeviceSource

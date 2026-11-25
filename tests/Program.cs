@@ -45,6 +45,14 @@ if (args.Length > 0 && args[0] == "pods")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "links")
+{
+    // Lists, per paired device, how many Windows audio connections it has (what click-to-connect would use). Sends nothing.
+    foreach (var d in new WindowsDeviceSource().Scan())
+        Console.WriteLine($"links: {d.Kind} connected={d.Connected} audio links={BluetoothConnector.AudioLinks(d.Id).Count}");
+    return 0;
+}
+
 if (args.Length > 0 && args[0] == "logi")
 {
     // Asks Logitech wireless devices for their name and battery level and prints what came back.
@@ -241,6 +249,17 @@ Section("R1 Logitech receiver devices");
     try { new CompositeSource(new Throwing()).Scan(); } catch (InvalidOperationException) { threw = true; }
     Check(threw, "every reader failing is reported as an error");
     Check(new Settings().LogitechEnabled, "Logitech reading on by default");
+
+    // A receiver mouse that goes quiet (asleep) must not raise "disconnected" alerts even when pinned.
+    var ns = new Settings { NotifyOnDisconnect = true };
+    ns.For("M").Pinned = true;
+    var quiet = new AlertEngine();
+    var awake = new DeviceReading("M", "Mouse", DeviceKind.Mouse, true, 90) { SleepsWhenIdle = true };
+    quiet.Evaluate([awake], ns);
+    Check(quiet.Evaluate([awake with { Connected = false }], ns).Count == 0, "sleeping receiver device: no disconnect alert");
+    quiet.Evaluate([awake], ns);
+    Check(quiet.Evaluate([], ns).Count == 0, "receiver device missing from a scan: no disconnect alert");
+    Check(quiet.Evaluate([awake with { Battery = 15 }], ns).Count(a => a.Kind == AlertKind.LowBattery) == 1, "low-battery alert still works for receiver devices");
 }
 
 // ---------------------------------------------------------------------------------------------

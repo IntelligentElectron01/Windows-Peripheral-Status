@@ -3,10 +3,12 @@
     .\build.ps1            build + run automated tests
     .\build.ps1 run        build and start the app
     .\build.ps1 demo       build and start the app with made-up devices
-    .\build.ps1 package    make dist\BTBatteryIndicator-win-x64.zip (self-contained)
+    .\build.ps1 package    make dist\BTBatteryIndicator-win-x64.zip (self-contained); if the app is installed on this PC,
+                           the installed copy is updated and restarted automatically
+    .\build.ps1 install    package, then install for this user (Start Menu + desktop shortcut) and start it
   Uses the project-local .NET SDK in .tools\dotnet if present, otherwise a system-wide 'dotnet'.
 #>
-param([ValidateSet('test', 'run', 'demo', 'package', 'dump', 'pods', 'logi', 'shots')] [string]$Task = 'test')
+param([ValidateSet('test', 'run', 'demo', 'package', 'dump', 'pods', 'logi', 'links', 'shots', 'install')] [string]$Task = 'test')
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -36,9 +38,10 @@ switch ($Task) {
     'demo' { Build $app; Start-Process $exe -ArgumentList '--demo' }
     'shots' { Build $app; Start-Process $exe -ArgumentList '--shot', ('"' + (Join-Path $root 'dist\shots') + '"') -Wait }
     'dump' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') dump }
+    'links' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') links }
     'logi' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') logi }
     'pods' { Build $tests; & (Join-Path $root 'tests\bin\Debug\net10.0-windows\Tests.exe') pods }
-    'package' {
+    { $_ -in 'package', 'install' } {
         $out = Join-Path $root 'dist\BTBatteryIndicator'
         if (Test-Path $out) { Remove-Item $out -Recurse -Force }
         & $dotnet publish $app -c Release -r win-x64 --self-contained true -o $out -v q --nologo `
@@ -50,5 +53,9 @@ switch ($Task) {
         Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip
         "Packaged: $zip ($([math]::Round((Get-Item $zip).Length / 1MB)) MB)"
         "SHA-256:  $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower())"
+        # Keep the installed copy in step with what was just built.
+        $installed = Join-Path $env:LOCALAPPDATA 'Programs\BTBatteryIndicator\BTBatteryIndicator.exe'
+        if ($Task -eq 'install') { & (Join-Path $out 'install.ps1') }
+        elseif (Test-Path $installed) { & (Join-Path $out 'install.ps1') -Quiet -NoDesktopShortcut:(-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'BT Battery Indicator.lnk'))) | ForEach-Object { "Updated installed copy. $_" } }
     }
 }

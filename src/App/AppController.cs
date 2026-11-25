@@ -111,7 +111,7 @@ public sealed class AppController
     void Apply(IReadOnlyList<DeviceReading> list)
     {
         var now = DateTime.UtcNow;
-        list = _podsTracker.Enrich(list, now);
+        list = WithPinnedPlaceholders(_podsTracker.Enrich(list, now));
         Devices = list;
         LastSync = now;
         bool settingsChanged = false;
@@ -119,12 +119,72 @@ public sealed class AppController
         {
             var p = Settings.For(d.Id);
             if (p.LastKnownName != d.Name) { p.LastKnownName = d.Name; settingsChanged = true; }
+            if (p.LastKnownKind != d.Kind) { p.LastKnownKind = d.Kind; settingsChanged = true; }
             if (d.Connected && d.Battery is int level) History.Record(d.Id, level, now);
         }
         History.Prune(now);
         History.SaveIfDirty();
         if (settingsChanged) Save();
         foreach (var a in _alerts.Evaluate(list, Settings)) AlertRaised?.Invoke(a);
+    }
+
+    /// <summary>A pinned device that is not currently found (asleep, switched off, Bluetooth off) stays listed as not connected.</summary>
+    IReadOnlyList<DeviceReading> WithPinnedPlaceholders(IReadOnlyList<DeviceReading> list)
+    {
+        var missing = Settings.Devices.Where(kv => kv.Value.Pinned && list.All(d => d.Id != kv.Key))
+            .Select(kv => new DeviceReading(kv.Key, kv.Value.LastKnownName ?? "Device",
+                // Receiver devices saved before their type was recorded are almost always mice.
+                kv.Value.LastKnownKind == DeviceKind.Generic && kv.Key.StartsWith("LOGI", StringComparison.Ordinal) ? DeviceKind.Mouse : kv.Value.LastKnownKind,
+                false, null) { SleepsWhenIdle = kv.Key.StartsWith("LOGI", StringComparison.Ordinal) }).ToList();
+        return missing.Count == 0 ? list : [.. list, .. missing];
+    }
+
+    // ---- connecting a pinned device on request ------------------------------------------------------
+
+    readonly HashSet<string> _connecting = new();
+
+    public bool IsConnecting(string id) => _connecting.Contains(id);
+
+    /// <summary>True for a known device that is currently not connected.</summary>
+    public bool NeedsConnect(string id) => !_connecting.Contains(id) && Devices.FirstOrDefault(d => d.Id == id) is { Connected: false };
+
+    /// <summary>
+    /// Asks Windows to connect a paired audio device, then watches for up to 12 seconds to see whether it worked.
+    /// Only happens when the user clicks a not-connected device; the app never connects anything by itself.
+    /// </summary>
+    public async Task TryConnectAsync(string id)
+    {
+        if (!_connecting.Add(id)) return;
+        string name = Settings.DisplayName(id, Settings.For(id).LastKnownName ?? "Device");
+        Updated?.Invoke();
+        try
+        {
+            string detail = "";
+            var outcome = await Task.Run(() => BluetoothConnector.Connect(id, out detail));
+            bool connected = false;
+            if (outcome == BluetoothConnector.Outcome.Requested)
+            {
+                foreach (int waitMs in new[] { 2000, 3000, 3000, 4000 })
+                {
+                    await Task.Delay(waitMs);
+                    await RefreshAsync();
+                    if (Devices.FirstOrDefault(d => d.Id == id) is { Connected: true }) { connected = true; break; }
+                }
+            }
+            if (!connected)
+                AlertRaised?.Invoke(new Alert(AlertKind.Info, id, $"Couldn't connect to {name}", outcome switch
+                {
+                    BluetoothConnector.Outcome.NotAnAudioDevice => "This kind of device reconnects by itself when it is switched on or woken.",
+                    BluetoothConnector.Outcome.Requested => "Make sure it is switched on, in range, and not connected to another device.",
+                    _ => "Windows did not accept the request. Try connecting from Windows Settings.",
+                }));
+        }
+        catch (Exception e) { Log(e); }
+        finally
+        {
+            _connecting.Remove(id);
+            Updated?.Invoke();
+        }
     }
 
     /// <summary>Devices the user has not hidden, connected ones first.</summary>

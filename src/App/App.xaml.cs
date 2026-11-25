@@ -80,8 +80,7 @@ public partial class App : Application
         _flyout.Closed_ += ScheduleTrim;
         ScheduleTrim();
 
-        _strip = new TaskbarStrip(_c);
-        _strip.Clicked += () => _flyout.Toggle();
+        CreateStrip();
         _tray.OpenRequested += () => _flyout.Toggle();
         _tray.ExitRequested += Quit;
         _flyout.ExitRequested += Quit;
@@ -107,6 +106,26 @@ public partial class App : Application
 
         _c.Start();
         if (!quiet) _flyout.ShowFlyout();
+    }
+
+    bool _quitting;
+
+    /// <summary>Builds the taskbar strip. It lives inside the taskbar window, so if Explorer restarts it is destroyed with it and rebuilt here.</summary>
+    void CreateStrip()
+    {
+        _strip = new TaskbarStrip(_c!);
+        // Clicking a pinned device that is not connected tries to connect it; anything else opens the flyout.
+        _strip.Clicked += id =>
+        {
+            if (id is not null && _c!.NeedsConnect(id)) _ = _c.TryConnectAsync(id);
+            else _flyout?.Toggle();
+        };
+        _strip.Closed += async (_, _) =>
+        {
+            if (_quitting) return;
+            await Task.Delay(3000);
+            if (!_quitting) CreateStrip();
+        };
     }
 
     void ShowHistory(string id)
@@ -140,6 +159,7 @@ public partial class App : Application
 
     void Quit()
     {
+        _quitting = true;
         _strip?.Close();
         _tray?.Dispose();
         _c?.Shutdown();

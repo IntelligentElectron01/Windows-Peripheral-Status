@@ -23,7 +23,8 @@ Unzip `BTBatteryIndicator-win-x64.zip`, click the File Explorer address bar in t
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-It installs for your user only (no administrator prompt) and starts the app. Windows 11 hides new tray icons under
+It installs for your user only (no administrator prompt), adds Start Menu and desktop shortcuts, and starts the app.
+After that, start it any time from the Start Menu (type "BT Battery") or the desktop shortcut. Windows 11 hides new tray icons under
 the `^` arrow near the clock; drag the icon out to keep it visible.
 
 The app is not code-signed, so Windows SmartScreen may show "Windows protected your PC" the first time.
@@ -35,7 +36,8 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 ## Use
 
 - **Left-click** the tray icon: open the panel. **Right-click**: refresh or exit.
-- **Pin** button on a row: that device appears on the taskbar. The strip hides while the taskbar is hidden or an app is full-screen.
+- **Pin** button on a row: that device appears on the taskbar and moves with it when the taskbar auto-hides.
+- **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
 - **Click a row** or the **…** button: battery history, rename, hide.
 - **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, hidden devices.
 
@@ -47,7 +49,8 @@ Needs the .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`). Then, in the p
 .\build.ps1 package
 ```
 
-This produces `dist\BTBatteryIndicator-win-x64.zip`. `.\build.ps1` on its own builds and runs the automated tests;
+This produces `dist\BTBatteryIndicator-win-x64.zip`, and if the app is already installed on that PC it updates and restarts
+the installed copy. `.\build.ps1 install` builds and installs in one go. `.\build.ps1` on its own builds and runs the automated tests;
 `.\build.ps1 demo` starts the app with made-up devices so you can try everything without real hardware.
 
 ## How it works
