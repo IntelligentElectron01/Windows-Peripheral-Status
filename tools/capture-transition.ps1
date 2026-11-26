@@ -21,9 +21,8 @@ public static class StripCapture {
 
   public static string Run(int seconds, string outDir) {
     SetProcessDPIAware();
-    IntPtr bar = FindWindowW("Shell_TrayWnd", null), strip = IntPtr.Zero;
-    EnumWindows((h, l) => { var sb = new StringBuilder(128); GetWindowTextW(h, sb, 128);
-      if (sb.ToString() == "BT Battery Indicator taskbar strip") { strip = h; return false; } return true; }, IntPtr.Zero);
+    // Looked up by title: the strip rides in the taskbar's own window layer, which plain window listing skips.
+    IntPtr bar = FindWindowW("Shell_TrayWnd", null), strip = FindWindowW(null, "BT Battery Indicator taskbar strip");
     if (strip == IntPtr.Zero) return "Strip window not found. Pin a device first and make sure the app is running.";
 
     var log = new List<string>(); var sw = Stopwatch.StartNew();

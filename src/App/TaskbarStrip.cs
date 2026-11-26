@@ -234,6 +234,9 @@ public sealed class TaskbarStrip : Window
         // taskbar, off the edge of the screen and back.
         if (!IsVisible) Show();
         if (_hwnd == IntPtr.Zero) return;
+        // Make the taskbar the strip's owner: Windows then keeps the strip in front of it, including while
+        // Start or Search is open, when the taskbar is lifted above every ordinary always-on-top window.
+        if (!_gliding && GetWindow(_hwnd, 4 /* owner */) != bar) SetWindowLongPtrW(_hwnd, -8 /* owner */, bar);
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         int w = (int)Math.Ceiling(ActualWidth * scale), h = (int)Math.Ceiling(ActualHeight * scale);
@@ -398,6 +401,7 @@ public sealed class TaskbarStrip : Window
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string? name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string? name);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
