@@ -48,3 +48,4 @@ One line each: decision — why.
 - **A click on a strip item that cannot be connected on request (mouse, keyboard, controller) opens the flyout** — found in testing: with every pinned device disconnected there was no way to open the flyout from the strip.
 - **Accent colour is a setting (default blue `#2F7FDB`, or Windows accent)** — user request.
 - **The shortcut recorder takes key presses before Windows acts on them (user request, 2026-11-25)** — a keyboard capture is installed only while the recorder is waiting for a combination and removed when it ends, so pressing e.g. Win+E records it instead of opening Explorer. Outside recording the app still never watches the keyboard.
+- **The strip is put back in front whenever Windows re-orders the taskbar and after each slide (2026-11-25)** — user report that the strip was sometimes missing; previously only a 2-second safety timer restored it, and not during a slide.

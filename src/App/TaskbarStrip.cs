@@ -25,7 +25,9 @@ public sealed class TaskbarStrip : Window
     // Slow safety-net timer (z-order, tray width changes). Movement itself is followed frame by frame, see the glide below.
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly WinEventProc _onExplorerMoved;
-    IntPtr _hwnd, _hook, _hookedBar;
+    // Shortly after the taskbar is re-ordered or finishes sliding, put the strip back in front of it.
+    readonly DispatcherTimer _raise = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    IntPtr _hwnd, _hook, _orderHook, _hookedBar;
     int _lastX = int.MinValue, _lastY = int.MinValue;
     string _builtKey = "";
     bool _wanted;
@@ -68,13 +70,19 @@ public sealed class TaskbarStrip : Window
             long ex = GetWindowLongPtrW(_hwnd, -20).ToInt64();
             SetWindowLongPtrW(_hwnd, -20, new IntPtr(ex | 0x08000000L /* NOACTIVATE */ | 0x00000080L /* TOOLWINDOW */));
         };
-        _onExplorerMoved = (_, _, hwnd, idObject, _, _, _) => { if (hwnd == _hookedBar && idObject == 0) StartGlide(); };
+        _onExplorerMoved = (_, evt, hwnd, idObject, _, _, _) =>
+        {
+            if (hwnd != _hookedBar || idObject != 0) return;
+            if (evt == 0x800B) StartGlide(); else _raise.Start();
+        };
+        // Windows sometimes lifts the taskbar above the strip (when it is revealed, clicked, or Start opens).
+        _raise.Tick += (_, _) => { if (_gliding) return; _raise.Stop(); Place(); };
         _timer.Tick += (_, _) => Place();
         _c.Updated += Rebuild;
         Theme.Changed += Rebuild;
         Closed += (_, _) =>
         {
-            _timer.Stop(); Unhook();
+            _timer.Stop(); _raise.Stop(); Unhook();
             _c.Updated -= Rebuild; Theme.Changed -= Rebuild;
         };
         Rebuild();
@@ -279,7 +287,7 @@ public sealed class TaskbarStrip : Window
         var thread = new Thread(() =>
         {
             try { Glide(hwnd, bar, x, offset, shownTop, hiddenTop, startTop); }
-            finally { _gliding = false; }
+            finally { _gliding = false; Dispatcher.BeginInvoke(() => _raise.Start()); }
         }) { IsBackground = true, Name = "strip-glide", Priority = ThreadPriority.AboveNormal };
         thread.Start();
     }
@@ -335,13 +343,16 @@ public sealed class TaskbarStrip : Window
         // and ignore everything that is not the taskbar window itself.
         GetWindowThreadProcessId(bar, out uint pid);
         _hook = SetWinEventHook(0x800B, 0x800B /* object location change */, IntPtr.Zero, _onExplorerMoved, pid, 0, 0);
+        _orderHook = SetWinEventHook(0x8004, 0x8004 /* object re-ordered */, IntPtr.Zero, _onExplorerMoved, pid, 0, 0);
         _hookedBar = bar;
     }
 
     void Unhook()
     {
         if (_hook != IntPtr.Zero) UnhookWinEvent(_hook);
+        if (_orderHook != IntPtr.Zero) UnhookWinEvent(_orderHook);
         _hook = IntPtr.Zero;
+        _orderHook = IntPtr.Zero;
         _hookedBar = IntPtr.Zero;
         StopGlide();
     }
