@@ -56,6 +56,28 @@ if (args.Length > 0 && args[0] == "links")
     return 0;
 }
 
+if (args.Length > 1 && args[0] == "switch")
+{
+    // Developer check, only run with the user's say-so: "switch off" disconnects the first connected headphones,
+    // "switch on" connects the first not-connected ones, then watches what Windows reports for 15 seconds.
+    bool off = args[1] == "off";
+    var target = new WindowsDeviceSource().Scan().FirstOrDefault(d => d.Kind == DeviceKind.Headphones && d.Connected == off
+                                                                      && BluetoothConnector.AudioLinks(d.Id).Count > 0);
+    if (target is null) { Console.WriteLine("no matching headphones"); return 1; }
+    string detail;
+    var outcome = off ? BluetoothConnector.Disconnect(target.Id, out detail) : BluetoothConnector.Connect(target.Id, out detail);
+    Console.WriteLine($"{(off ? "disconnect" : "connect")}: {outcome} | {detail}");
+    for (int i = 1; i <= 15; i++)
+    {
+        await Task.Delay(1000);
+        var now = new WindowsDeviceSource().Scan().FirstOrDefault(d => d.Id == target.Id);
+        var nodes = WindowsDeviceSource.ReadNodes().Where(n => n.Address == target.Id && n.Connected is not null)
+                                       .Select(n => $"{Short(Regex.Replace(n.InstanceId, "[0-9A-Fa-f]{12}", "…"))}={n.Connected}");
+        Console.WriteLine($"{i,2}s connected={now?.Connected} | {string.Join(" ", nodes)}");
+    }
+    return 0;
+}
+
 if (args.Length > 0 && args[0] == "logi")
 {
     // Asks Logitech wireless devices for their name and battery level and prints what came back.

@@ -219,9 +219,10 @@ public sealed class AppController
             bool gone = false;
             if (outcome == BluetoothConnector.Outcome.Requested)
             {
-                foreach (int waitMs in new[] { 1200, 2000, 3000 })
+                // Windows takes about 5 to 7 seconds to report the link gone (measured on real earbuds), so allow 16.
+                for (int i = 0; i < 16; i++)
                 {
-                    await Task.Delay(waitMs);
+                    await Task.Delay(1000);
                     await RefreshAsync();
                     if (Devices.FirstOrDefault(d => d.Id == id) is not { Connected: true }) { gone = true; break; }
                 }
