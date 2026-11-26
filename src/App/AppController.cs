@@ -198,6 +198,47 @@ public sealed class AppController
         return true;
     }
 
+    /// <summary>True if Windows can connect or disconnect this device on request (Bluetooth audio devices only).</summary>
+    public Task<bool> CanSwitchAsync(string id) =>
+        id.StartsWith("LOGI", StringComparison.Ordinal) ? Task.FromResult(false) : Task.Run(() => BluetoothConnector.AudioLinks(id).Count > 0);
+
+    /// <summary>
+    /// Asks Windows to drop the connection to a Bluetooth audio device, then checks that it went. The device stays
+    /// paired. Only happens when the user picks Disconnect in the device menu.
+    /// </summary>
+    public async Task TryDisconnectAsync(string id)
+    {
+        if (!_connecting.Add(id)) return;
+        string name = Settings.DisplayName(id, Settings.For(id).LastKnownName ?? "Device");
+        _alerts.ExpectDisconnect(id);   // the user asked for it, so no "disconnected" notification
+        Updated?.Invoke();
+        try
+        {
+            string detail = "";
+            var outcome = await Task.Run(() => BluetoothConnector.Disconnect(id, out detail));
+            bool gone = false;
+            if (outcome == BluetoothConnector.Outcome.Requested)
+            {
+                foreach (int waitMs in new[] { 1200, 2000, 3000 })
+                {
+                    await Task.Delay(waitMs);
+                    await RefreshAsync();
+                    if (Devices.FirstOrDefault(d => d.Id == id) is not { Connected: true }) { gone = true; break; }
+                }
+            }
+            if (!gone)
+                AlertRaised?.Invoke(new Alert(AlertKind.Info, id, $"Couldn't disconnect {name}", outcome == BluetoothConnector.Outcome.NotAnAudioDevice
+                    ? "Windows can only disconnect audio devices on request."
+                    : "Windows did not drop the connection. Try disconnecting from Windows Settings."));
+        }
+        catch (Exception e) { Log(e); }
+        finally
+        {
+            _connecting.Remove(id);
+            Updated?.Invoke();
+        }
+    }
+
     /// <summary>Devices the user has not hidden, connected ones first.</summary>
     public IEnumerable<DeviceReading> Visible => Devices
         .Where(d => !(Settings.Devices.TryGetValue(d.Id, out var p) && p.Hidden))

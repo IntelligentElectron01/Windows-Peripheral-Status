@@ -469,6 +469,21 @@ Section("R11 fully local");
     }
 }
 
+Section("Disconnect on request");
+{
+    var ds = new Settings { NotifyOnDisconnect = true };
+    ds.For("AABBCCDDEEFF").Pinned = true;
+    var eng = new AlertEngine();
+    DeviceReading Hp(bool on) => new("AABBCCDDEEFF", "Headset", DeviceKind.Headphones, on, 60);
+    eng.Evaluate([Hp(true)], ds);
+    eng.ExpectDisconnect("AABBCCDDEEFF");
+    Check(eng.Evaluate([Hp(false)], ds).Count == 0, "a disconnect the user asked for raises no notification");
+    eng.Evaluate([Hp(true)], ds);
+    Check(eng.Evaluate([Hp(false)], ds).Any(a => a.Kind == AlertKind.Disconnected), "a later unexpected disconnect still notifies");
+    Check(BluetoothConnector.Disconnect("not-an-address", out _) == BluetoothConnector.Outcome.NotAnAudioDevice, "disconnect refuses anything that is not a Bluetooth address");
+    Check(BluetoothConnector.Disconnect("000000000000", out _) == BluetoothConnector.Outcome.NotAnAudioDevice, "disconnect does nothing for an address with no audio link");
+}
+
 Section("Connect popup");
 {
     DeviceReading PopDev(string id, bool on, bool sleeper = false) => new(id, id, DeviceKind.Headphones, on, 50) { SleepsWhenIdle = sleeper };

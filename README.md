@@ -10,6 +10,7 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - Hover any tray icon to see every connected device
 - Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
 - A small popup that drops down from the top of the screen when a Bluetooth device connects, showing its battery (can be switched off)
+- Connect or disconnect Bluetooth headphones, earbuds and speakers from the device menu (they stay paired)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
 

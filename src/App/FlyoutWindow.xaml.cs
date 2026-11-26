@@ -233,11 +233,19 @@ public partial class FlyoutWindow : Window
         _c.Change(s => s.For(id).Pinned = !s.For(id).Pinned);
     }
 
-    void More_Click(object sender, RoutedEventArgs e)
+    async void More_Click(object sender, RoutedEventArgs e)
     {
         var button = (Button)sender;
         string id = (string)button.Tag;
         var menu = new ContextMenu { PlacementTarget = button, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        // Bluetooth audio devices can be connected and disconnected on request; other kinds cannot.
+        if (!_c.IsConnecting(id) && _c.Devices.FirstOrDefault(d => d.Id == id) is { } dev && await _c.CanSwitchAsync(id))
+        {
+            menu.Items.Add(dev.Connected
+                ? Item("Disconnect", () => _ = _c.TryDisconnectAsync(id))
+                : Item("Connect", () => _ = _c.TryConnectAsync(id)));
+            menu.Items.Add(new Separator());
+        }
         menu.Items.Add(Item("Battery history", () => HistoryRequested?.Invoke(id)));
         menu.Items.Add(Item("Rename", () => RenameRequested?.Invoke(id)));
         menu.Items.Add(Item("Hide", () => _c.Change(s => s.For(id).Hidden = true)));

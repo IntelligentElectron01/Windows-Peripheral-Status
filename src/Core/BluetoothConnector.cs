@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 namespace BTBatteryIndicator.Core;
 
 /// <summary>
-/// Asks Windows to connect an already-paired Bluetooth audio device (headphones, earbuds, speakers).
+/// Asks Windows to connect or disconnect an already-paired Bluetooth audio device (headphones, earbuds, speakers).
+/// A disconnected device stays paired and can be connected again at any time.
 /// This is the same request the "Connect" button in Windows' own sound and Bluetooth panels sends: it goes to
 /// Windows' Bluetooth audio driver, which then tries to reach the device. It never pairs or unpairs anything.
 /// Only audio devices can be connected this way; mice, keyboards and controllers reconnect by themselves
@@ -28,7 +29,12 @@ public static class BluetoothConnector
         return found;
     }
 
-    public static Outcome Connect(string address, out string detail)
+    public static Outcome Connect(string address, out string detail) => Send(address, 0 /* reconnect once */, out detail);
+
+    /// <summary>Drops the audio connection, like "Disconnect" in Windows' Bluetooth settings. The device stays paired.</summary>
+    public static Outcome Disconnect(string address, out string detail) => Send(address, 1 /* disconnect once */, out detail);
+
+    static Outcome Send(string address, uint requestId, out string detail)
     {
         int sent = 0, failed = 0, lastError = 0, links = 0;
         try
@@ -39,7 +45,7 @@ public static class BluetoothConnector
                 if (enumerator.GetDevice(id, out var filter) < 0 || filter is null) { failed++; return; }
                 var iid = typeof(IKsControl).GUID;
                 if (filter.Activate(ref iid, 23 /* any server */, IntPtr.Zero, out object obj) < 0 || obj is not IKsControl ks) { failed++; return; }
-                var request = new KsProperty { Set = BluetoothAudioSet, Id = 0 /* reconnect once */, Flags = 1 };
+                var request = new KsProperty { Set = BluetoothAudioSet, Id = requestId, Flags = 1 };
                 int hr = ks.KsProperty(ref request, Marshal.SizeOf<KsProperty>(), IntPtr.Zero, 0, out _);
                 if (hr >= 0) sent++; else { failed++; lastError = hr; }
             });

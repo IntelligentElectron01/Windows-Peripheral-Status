@@ -17,6 +17,9 @@ public sealed class AlertEngine
     readonly Dictionary<string, bool> _wasConnected = new();
     readonly HashSet<string> _sleepers = new(); // devices that go quiet when idle; their silence is not a disconnect
 
+    /// <summary>The user is disconnecting this device on purpose, so its next drop is not worth a notification.</summary>
+    public void ExpectDisconnect(string id) => _wasConnected[id] = false;
+
     public IReadOnlyList<Alert> Evaluate(IReadOnlyList<DeviceReading> devices, Settings s)
     {
         var alerts = new List<Alert>();
