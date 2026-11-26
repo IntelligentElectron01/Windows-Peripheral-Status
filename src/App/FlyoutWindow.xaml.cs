@@ -293,6 +293,7 @@ public partial class FlyoutWindow : Window
     // ---- choosing the shortcut that opens this panel -----------------------------------------------
 
     bool _capturingHotkey;
+    KeyCapture? _keys;
 
     /// <summary>Set by the app: tries to register a shortcut with Windows and says whether it worked. Empty text clears it.</summary>
     public Func<string, bool>? ApplyHotkey { get; set; }
@@ -301,6 +302,9 @@ public partial class FlyoutWindow : Window
     {
         _capturingHotkey = true;
         ApplyHotkey?.Invoke("");   // release the current one so pressing it again can be captured
+        // While recording, take the keys before Windows or other apps act on them (Win+E, Alt+Tab, ...).
+        if (_keys is null) { _keys = new KeyCapture(); _keys.Pressed += OnCapturedKey; }
+        _keys.Start();
         HotkeyButton.Content = "Press keys\u2026";
         ShowHotkeyHint("Press the combination now. Esc cancels.");
     }
@@ -308,6 +312,7 @@ public partial class FlyoutWindow : Window
     void HotkeyClear_Click(object sender, RoutedEventArgs e)
     {
         _capturingHotkey = false;
+        _keys?.Stop();
         ApplyHotkey?.Invoke("");
         HotkeyHint.Visibility = Visibility.Collapsed;
         _c.Change(s => s.Hotkey = "");
@@ -322,6 +327,7 @@ public partial class FlyoutWindow : Window
     void EndHotkeyCapture(string? chosen)
     {
         _capturingHotkey = false;
+        _keys?.Stop();
         if (chosen is null)
         {
             ApplyHotkey?.Invoke(_c.Settings.Hotkey);   // cancelled: put the previous one back
@@ -348,12 +354,17 @@ public partial class FlyoutWindow : Window
             if (e.Key == Key.Escape) HideFlyout();
             return;
         }
+        // Only reached if the key capture could not be installed; normally the keys never get this far.
         e.Handled = true;
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.Escape) { EndHotkeyCapture(null); return; }
+        OnCapturedKey(e.Key == Key.System ? e.SystemKey : e.Key, Keyboard.Modifiers);
+    }
+
+    void OnCapturedKey(Key key, ModifierKeys mods)
+    {
+        if (!_capturingHotkey) return;
+        if (key == Key.Escape && mods == ModifierKeys.None) { EndHotkeyCapture(null); return; }
         if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift
             or Key.LWin or Key.RWin or Key.System or Key.None or Key.ImeProcessed or Key.DeadCharProcessed) return; // still holding modifiers
-        var mods = Keyboard.Modifiers;
         var hotkey = new Hotkey(mods.HasFlag(ModifierKeys.Control), mods.HasFlag(ModifierKeys.Alt), mods.HasFlag(ModifierKeys.Shift),
             mods.HasFlag(ModifierKeys.Windows), key.ToString());
         if (!hotkey.IsValid) { ShowHotkeyHint("Include Ctrl, Alt or the Windows key, for example Ctrl+Alt+B."); return; }

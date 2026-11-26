@@ -7,7 +7,7 @@ namespace BTBatteryIndicator;
 
 /// <summary>
 /// Registers one system-wide keyboard shortcut with Windows and reports when it is pressed.
-/// Windows delivers the key press itself; the app does not watch the keyboard.
+/// Windows delivers the key press itself; the app does not watch the keyboard (except while a shortcut is being recorded, see KeyCapture).
 /// </summary>
 public sealed class HotkeyManager : IDisposable
 {
