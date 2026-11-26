@@ -9,11 +9,35 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - Pin devices to show them in a strip on the taskbar with a battery gauge and percentage, or as numbered tray icons if you prefer (yellow under 50%, red under 20%)
 - Hover any tray icon to see every connected device
 - Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
+- A small popup that drops down from the top of the screen when a Bluetooth device connects, showing its battery (can be switched off)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
 
 Other devices that connect through a 2.4 GHz USB dongle are not supported, and a device that does not report a level
 shows "No battery info".
+
+## Screenshots
+
+All screenshots use made-up demo devices.
+
+| Device list | Settings |
+| --- | --- |
+| ![Device list, dark theme](docs/screenshots/flyout-dark.png) | ![Settings panel, dark theme](docs/screenshots/flyout-settings-dark.png) |
+
+| Light theme | Battery history |
+| --- | --- |
+| ![Device list, light theme](docs/screenshots/flyout-light.png) | ![7-day battery history chart](docs/screenshots/history-dark.png) |
+
+Pinned devices on the taskbar (dark and light taskbar, and earbuds with one bud charging in its case):
+
+![Taskbar strip, dark](docs/screenshots/strip-dark.png)
+![Taskbar strip, light](docs/screenshots/strip-light.png)
+![Taskbar strip with separate earbud levels](docs/screenshots/strip-pods3-dark.png)
+
+Popup when a device connects:
+
+![Connect popup for earbuds](docs/screenshots/popup-earbuds.png)
+![Connect popup for a keyboard](docs/screenshots/popup-keyboard.png)
 
 ## Install (one command)
 

@@ -88,6 +88,21 @@ public partial class App : Application
         _flyout.HistoryRequested += ShowHistory;
         _flyout.RenameRequested += id => new RenameWindow(_c, id).Show();
         _c.AlertRaised += a => _tray.ShowAlert(a);
+        _c.DeviceConnected += d => ConnectPopup.Announce(_c, d);
+        if (demo && args.Contains("--popup-test"))
+        {
+            // Developer helper: disconnect and reconnect two made-up devices so the connect popup can be watched.
+            Dispatcher.BeginInvoke(async () =>
+            {
+                string[] ids = ["DEMO00000005", "DEMO00000003"];
+                await Task.Delay(2500);
+                foreach (var id in ids) _c.Demo!.ToggleConnected(id);
+                await _c.RefreshAsync();
+                await Task.Delay(1500);
+                foreach (var id in ids) _c.Demo!.ToggleConnected(id);
+                await _c.RefreshAsync();
+            });
+        }
 
         // Optional keyboard shortcut that opens the flyout from anywhere (chosen in the gear panel).
         _hotkey = new HotkeyManager();
@@ -230,6 +245,18 @@ public partial class App : Application
             await c.RefreshAsync();
             bar.Close();
             c.Change(s => { s.For("DEMO00000002").Pinned = false; s.For("DEMO00000005").Pinned = false; });
+
+            if (dark)
+            {
+                foreach (var (id, file) in new[] { ("DEMO00000005", "popup-earbuds.png"), ("DEMO00000001", "popup-keyboard.png") })
+                {
+                    var pop = ConnectPopup.Still(c, c.Devices.First(d => d.Id == id));
+                    pop.Show();
+                    await Idle();
+                    Save(pop, Path.Combine(dir, file));
+                    pop.Close();
+                }
+            }
 
             // Tray icons at 2x so they can be inspected.
             SD.Color Sd(Color m) => SD.Color.FromArgb(255, m.R, m.G, m.B);

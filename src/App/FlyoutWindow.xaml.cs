@@ -141,6 +141,7 @@ public partial class FlyoutWindow : Window
 
         StartToggle.IsChecked = _c.StartWithWindows;
         DisconnectToggle.IsChecked = s.NotifyOnDisconnect;
+        ConnectPopupToggle.IsChecked = s.ConnectPopup;
         LowToggle.IsChecked = s.LowBatteryNotify;
         ThresholdSlider.Value = s.LowBatteryThreshold;
         ThresholdSlider.IsEnabled = s.LowBatteryNotify;
@@ -269,6 +270,9 @@ public partial class FlyoutWindow : Window
     }
 
     void StartToggle_Click(object sender, RoutedEventArgs e) => _c.StartWithWindows = StartToggle.IsChecked == true;
+
+    void ConnectPopupToggle_Click(object sender, RoutedEventArgs e) =>
+        _c.Change(s => s.ConnectPopup = ConnectPopupToggle.IsChecked == true);
 
     void DisconnectToggle_Click(object sender, RoutedEventArgs e) =>
         _c.Change(s => s.NotifyOnDisconnect = DisconnectToggle.IsChecked == true);

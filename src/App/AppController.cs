@@ -126,7 +126,13 @@ public sealed class AppController
         History.SaveIfDirty();
         if (settingsChanged) Save();
         foreach (var a in _alerts.Evaluate(list, Settings)) AlertRaised?.Invoke(a);
+        foreach (var d in _connects.Evaluate(list, Settings)) DeviceConnected?.Invoke(d);
     }
+
+    readonly ConnectWatcher _connects = new();
+
+    /// <summary>A device has just connected (not raised for devices already connected at start-up).</summary>
+    public event Action<DeviceReading>? DeviceConnected;
 
     /// <summary>A pinned device that is not currently found (asleep, switched off, Bluetooth off) stays listed as not connected.</summary>
     IReadOnlyList<DeviceReading> WithPinnedPlaceholders(IReadOnlyList<DeviceReading> list)

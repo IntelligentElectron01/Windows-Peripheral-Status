@@ -169,7 +169,7 @@ public sealed class TaskbarStrip : Window
     }
 
     /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
-    static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–")
+    internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–")
     {
         bool live = level is not null;
         var levelBrush = Theme.Brush(Theme.BandColor(Levels.Band(level)));

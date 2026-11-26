@@ -469,6 +469,31 @@ Section("R11 fully local");
     }
 }
 
+Section("Connect popup");
+{
+    DeviceReading PopDev(string id, bool on, bool sleeper = false) => new(id, id, DeviceKind.Headphones, on, 50) { SleepsWhenIdle = sleeper };
+    var ps = new Settings();
+    var cw = new ConnectWatcher();
+    Check(cw.Evaluate([PopDev("A", true), PopDev("B", false)], ps).Count == 0, "nothing announced for devices already connected at start-up");
+    Check(cw.Evaluate([PopDev("A", true), PopDev("B", false)], ps).Count == 0, "no change, no popup");
+    var popGot = cw.Evaluate([PopDev("A", true), PopDev("B", true)], ps);
+    Check(popGot.Count == 1 && popGot[0].Id == "B", "a device that connects is announced once");
+    Check(cw.Evaluate([PopDev("A", true), PopDev("B", true)], ps).Count == 0, "still connected: not announced again");
+    cw.Evaluate([PopDev("A", true), PopDev("B", false)], ps);
+    Check(cw.Evaluate([PopDev("A", true), PopDev("B", true)], ps).Count == 1, "reconnecting announces again");
+    Check(cw.Evaluate([PopDev("A", true), PopDev("B", true), PopDev("C", true)], ps).Count == 1, "a newly paired, connected device is announced");
+    cw.Evaluate([PopDev("A", true), PopDev("LOGI1", false, true), PopDev("D", false)], ps);
+    Check(cw.Evaluate([PopDev("A", true), PopDev("LOGI1", true, true), PopDev("D", false)], ps).Count == 0, "USB-receiver devices are left out");
+    ps.For("D").Hidden = true;
+    Check(cw.Evaluate([PopDev("A", true), PopDev("D", true)], ps).Count == 0, "hidden devices are left out");
+    ps.ConnectPopup = false;
+    cw.Evaluate([PopDev("A", false)], ps);
+    Check(cw.Evaluate([PopDev("A", true)], ps).Count == 0, "switched off in settings: nothing announced");
+    ps.ConnectPopup = true;
+    Check(cw.Evaluate([PopDev("A", true)], ps).Count == 0, "switching it back on does not announce what connected meanwhile");
+    Check(new Settings().ConnectPopup, "connect popup on by default");
+}
+
 try { Directory.Delete(temp, true); } catch { }
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;
