@@ -26,7 +26,7 @@ public sealed class TaskbarStrip : Window
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly WinEventProc _onExplorerMoved;
     // Shortly after the taskbar is re-ordered or finishes sliding, put the strip back in front of it.
-    readonly DispatcherTimer _raise = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    readonly DispatcherTimer _raise = new() { Interval = TimeSpan.FromMilliseconds(40) };
     IntPtr _hwnd, _hook, _orderHook, _frontHook, _hookedBar;
     int _lastX = int.MinValue, _lastY = int.MinValue;
     string _builtKey = "";
@@ -72,16 +72,16 @@ public sealed class TaskbarStrip : Window
         };
         _onExplorerMoved = (_, evt, hwnd, idObject, _, _, _) =>
         {
-            if (evt == 0x0003) { RaiseNow(); return; }   // another window came to the front (Start, Search, ...)
+            if (evt == 0x0003) { Nudge(10); return; }   // another window came to the front (Start, Search, ...)
             if (hwnd != _hookedBar || idObject != 0) return;
-            if (evt == 0x800B) StartGlide(); else RaiseNow();
+            if (evt == 0x800B) StartGlide(); else Nudge(3);
         };
         // Windows sometimes lifts the taskbar above the strip (when it is revealed, clicked, or Start opens).
         // The strip is put back in front at once, then again a few times shortly after in case Windows was
         // still rearranging, and finally placed properly once any slide has finished.
         _raise.Tick += (_, _) =>
         {
-            BringToFront();
+            if (BarLifted()) BringToFront();
             if (--_raisesLeft > 0 || _gliding) return;
             _raise.Stop(); Place();
         };
@@ -263,11 +263,22 @@ public sealed class TaskbarStrip : Window
 
     int _raisesLeft;
 
-    void RaiseNow()
+    /// <summary>
+    /// While Start or Search is open Windows lifts the taskbar above every ordinary always-on-top window. Only
+    /// then is the strip pushed to the front straight away; at other times re-ordering waits until the taskbar
+    /// has stopped moving, because Windows makes such requests wait for the slide, which would freeze the strip.
+    /// </summary>
+    void Nudge(int checks)
     {
-        BringToFront();
-        _raisesLeft = 4;
+        if (BarLifted()) BringToFront();
+        _raisesLeft = Math.Max(_raisesLeft, checks);
         _raise.Start();
+    }
+
+    bool BarLifted()
+    {
+        try { return _hookedBar != IntPtr.Zero && GetWindowBand(_hookedBar, out uint band) && band > 1; }
+        catch (EntryPointNotFoundException) { return false; }
     }
 
     /// <summary>Front of the always-on-top windows, without moving. Does not wait on other programs.</summary>
@@ -315,7 +326,7 @@ public sealed class TaskbarStrip : Window
         var thread = new Thread(() =>
         {
             try { Glide(hwnd, bar, x, offset, shownTop, hiddenTop, startTop); }
-            finally { _gliding = false; Dispatcher.BeginInvoke(RaiseNow); }
+            finally { _gliding = false; Dispatcher.BeginInvoke(() => Nudge(3)); }
         }) { IsBackground = true, Name = "strip-glide", Priority = ThreadPriority.AboveNormal };
         thread.Start();
     }
@@ -430,6 +441,7 @@ public sealed class TaskbarStrip : Window
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string? name);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
+    [DllImport("user32.dll")] static extern bool GetWindowBand(IntPtr hwnd, out uint band);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
