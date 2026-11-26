@@ -27,7 +27,7 @@ public sealed class TaskbarStrip : Window
     readonly WinEventProc _onExplorerMoved;
     // Shortly after the taskbar is re-ordered or finishes sliding, put the strip back in front of it.
     readonly DispatcherTimer _raise = new() { Interval = TimeSpan.FromMilliseconds(120) };
-    IntPtr _hwnd, _hook, _orderHook, _hookedBar;
+    IntPtr _hwnd, _hook, _orderHook, _frontHook, _hookedBar;
     int _lastX = int.MinValue, _lastY = int.MinValue;
     string _builtKey = "";
     bool _wanted;
@@ -72,11 +72,19 @@ public sealed class TaskbarStrip : Window
         };
         _onExplorerMoved = (_, evt, hwnd, idObject, _, _, _) =>
         {
+            if (evt == 0x0003) { RaiseNow(); return; }   // another window came to the front (Start, Search, ...)
             if (hwnd != _hookedBar || idObject != 0) return;
-            if (evt == 0x800B) StartGlide(); else _raise.Start();
+            if (evt == 0x800B) StartGlide(); else RaiseNow();
         };
         // Windows sometimes lifts the taskbar above the strip (when it is revealed, clicked, or Start opens).
-        _raise.Tick += (_, _) => { if (_gliding) return; _raise.Stop(); Place(); };
+        // The strip is put back in front at once, then again a few times shortly after in case Windows was
+        // still rearranging, and finally placed properly once any slide has finished.
+        _raise.Tick += (_, _) =>
+        {
+            BringToFront();
+            if (--_raisesLeft > 0 || _gliding) return;
+            _raise.Stop(); Place();
+        };
         _timer.Tick += (_, _) => Place();
         _c.Updated += Rebuild;
         Theme.Changed += Rebuild;
@@ -253,6 +261,23 @@ public sealed class TaskbarStrip : Window
         else SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
     }
 
+    int _raisesLeft;
+
+    void RaiseNow()
+    {
+        BringToFront();
+        _raisesLeft = 4;
+        _raise.Start();
+    }
+
+    /// <summary>Front of the always-on-top windows, without moving. Does not wait on other programs.</summary>
+    void BringToFront()
+    {
+        if (!_wanted || Sticky || _hwnd == IntPtr.Zero || !IsVisible || _lastX == -32000) return;
+        SetWindowPos(_hwnd, new IntPtr(-1), 0, 0, 0, 0,
+            0x0001 /* NOSIZE */ | 0x0002 /* NOMOVE */ | 0x0010 /* NOACTIVATE */ | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+    }
+
     /// <summary>Moves the strip off screen without hiding it.</summary>
     void Park()
     {
@@ -290,7 +315,7 @@ public sealed class TaskbarStrip : Window
         var thread = new Thread(() =>
         {
             try { Glide(hwnd, bar, x, offset, shownTop, hiddenTop, startTop); }
-            finally { _gliding = false; Dispatcher.BeginInvoke(() => _raise.Start()); }
+            finally { _gliding = false; Dispatcher.BeginInvoke(RaiseNow); }
         }) { IsBackground = true, Name = "strip-glide", Priority = ThreadPriority.AboveNormal };
         thread.Start();
     }
@@ -347,6 +372,7 @@ public sealed class TaskbarStrip : Window
         GetWindowThreadProcessId(bar, out uint pid);
         _hook = SetWinEventHook(0x800B, 0x800B /* object location change */, IntPtr.Zero, _onExplorerMoved, pid, 0, 0);
         _orderHook = SetWinEventHook(0x8004, 0x8004 /* object re-ordered */, IntPtr.Zero, _onExplorerMoved, pid, 0, 0);
+        _frontHook = SetWinEventHook(0x0003, 0x0003 /* a window came to the front */, IntPtr.Zero, _onExplorerMoved, 0, 0, 0);
         _hookedBar = bar;
     }
 
@@ -355,7 +381,9 @@ public sealed class TaskbarStrip : Window
         if (_hook != IntPtr.Zero) UnhookWinEvent(_hook);
         if (_orderHook != IntPtr.Zero) UnhookWinEvent(_orderHook);
         _hook = IntPtr.Zero;
+        if (_frontHook != IntPtr.Zero) UnhookWinEvent(_frontHook);
         _orderHook = IntPtr.Zero;
+        _frontHook = IntPtr.Zero;
         _hookedBar = IntPtr.Zero;
         StopGlide();
     }
