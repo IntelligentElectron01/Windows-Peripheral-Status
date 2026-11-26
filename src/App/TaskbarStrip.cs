@@ -277,6 +277,12 @@ public sealed class TaskbarStrip : Window
 
     bool BarLifted()
     {
+        // Only while a shell surface (Start, Search, the taskbar itself) is in front. Once the user has clicked
+        // away the taskbar is about to slide out, and a re-order request then would freeze the strip mid-slide.
+        var cls = new System.Text.StringBuilder(64);
+        GetClassNameW(GetForegroundWindow(), cls, 64);
+        string front = cls.ToString();
+        if (front != "Windows.UI.Core.CoreWindow" && front != "Shell_TrayWnd" && !front.StartsWith("Xaml", StringComparison.Ordinal)) return false;
         try { return _hookedBar != IntPtr.Zero && GetWindowBand(_hookedBar, out uint band) && band > 1; }
         catch (EntryPointNotFoundException) { return false; }
     }
@@ -442,6 +448,8 @@ public sealed class TaskbarStrip : Window
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
     [DllImport("user32.dll")] static extern bool GetWindowBand(IntPtr hwnd, out uint band);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr hwnd, System.Text.StringBuilder text, int max);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
