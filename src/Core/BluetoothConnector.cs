@@ -29,6 +29,35 @@ public static class BluetoothConnector
         return found;
     }
 
+    /// <summary>For diagnostics: per audio connection, whether the driver says it supports each request. Sends no request.</summary>
+    public static List<string> Describe(string address)
+    {
+        var lines = new List<string>();
+        ForEachLink(address, (id, enumerator) =>
+        {
+            string kind = id.Replace(address, "…", StringComparison.OrdinalIgnoreCase);
+            kind = System.Text.RegularExpressions.Regex.Replace(kind, "[0-9a-f]&[0-9a-f]{6,8}&", "…&", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (enumerator.GetDevice(id, out var filter) < 0 || filter is null) { lines.Add(kind + " | cannot open"); return; }
+            var iid = typeof(IKsControl).GUID;
+            if (filter.Activate(ref iid, 23, IntPtr.Zero, out object obj) < 0 || obj is not IKsControl ks) { lines.Add(kind + " | no control interface"); return; }
+            string text = kind;
+            IntPtr buffer = Marshal.AllocHGlobal(4);
+            try
+            {
+                foreach (uint request in new uint[] { 0, 1 })
+                {
+                    Marshal.WriteInt32(buffer, 0);
+                    var ask = new KsProperty { Set = BluetoothAudioSet, Id = request, Flags = 0x200 /* is it supported? */ };
+                    int hr = ks.KsProperty(ref ask, Marshal.SizeOf<KsProperty>(), buffer, 4, out _);
+                    text += $" | request {request}: 0x{hr:X8} access {Marshal.ReadInt32(buffer)}";
+                }
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+            lines.Add(text);
+        });
+        return lines;
+    }
+
     public static Outcome Connect(string address, out string detail) => Send(address, 0 /* reconnect once */, out detail);
 
     /// <summary>Drops the audio connection, like "Disconnect" in Windows' Bluetooth settings. The device stays paired.</summary>
@@ -69,8 +98,8 @@ public static class BluetoothConnector
         var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
         if (enumerator.EnumAudioEndpoints(2 /* inputs and outputs */, 0xF /* every state */, out var endpoints) < 0 || endpoints is null) return;
         endpoints.GetCount(out uint count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var topologyId = typeof(IDeviceTopology).GUID;
+        var all = new List<(string Id, Guid Container)>();
         for (uint i = 0; i < count; i++)
         {
             if (endpoints.Item(i, out var endpoint) < 0 || endpoint is null) continue;
@@ -78,8 +107,45 @@ public static class BluetoothConnector
             if (topology.GetConnectorCount(out uint connectors) < 0 || connectors == 0) continue;
             if (topology.GetConnector(0, out var connector) < 0 || connector is null) continue;
             if (connector.GetDeviceIdConnectedTo(out string? id) < 0 || string.IsNullOrEmpty(id)) continue;
-            if (id.Contains(address, StringComparison.OrdinalIgnoreCase) && seen.Add(id)) onLink(id, enumerator);
+            all.Add((id, ContainerOf(endpoint)));
         }
+
+        // The music connection carries the address in its identifier. The calls (hands-free) connection does not,
+        // so it is matched by Windows' "same physical device" number, and must still be a Bluetooth connection.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var containers = all.Where(e => e.Id.Contains(address, StringComparison.OrdinalIgnoreCase) && e.Container != Guid.Empty)
+                            .Select(e => e.Container).ToHashSet();
+        foreach (var (id, container) in all)
+        {
+            bool mine = id.Contains(address, StringComparison.OrdinalIgnoreCase)
+                        || (containers.Contains(container) && id.Contains("bth", StringComparison.OrdinalIgnoreCase));
+            if (mine && seen.Add(id)) onLink(id, enumerator);
+        }
+    }
+
+    static Guid ContainerOf(IMMDevice endpoint)
+    {
+        if (endpoint.OpenPropertyStore(0 /* read */, out var store) < 0 || store is null) return Guid.Empty;
+        var key = new PropertyKey { Set = new Guid("8C7ED206-3F8A-4827-B3AB-AE9E1FAEFC6C"), Id = 2 }; // container id
+        if (store.GetValue(ref key, out var value) < 0) return Guid.Empty;
+        try { return value.Type == 72 /* GUID */ && value.Pointer != IntPtr.Zero ? Marshal.PtrToStructure<Guid>(value.Pointer) : Guid.Empty; }
+        finally { PropVariantClear(ref value); }
+    }
+
+    [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant value);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PropertyKey { public Guid Set; public uint Id; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PropVariant { public ushort Type; ushort _r1, _r2, _r3; public IntPtr Pointer; IntPtr _more; }
+
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+    interface IPropertyStore
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int GetAt(uint index, out PropertyKey key);
+        [PreserveSig] int GetValue(ref PropertyKey key, out PropVariant value);
     }
 
     static readonly Guid BluetoothAudioSet = new("7FA06C40-B8F6-4C7E-8556-E8C33A12E54D");
@@ -109,6 +175,7 @@ public static class BluetoothConnector
     interface IMMDevice
     {
         [PreserveSig] int Activate(ref Guid iid, int context, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object instance);
+        [PreserveSig] int OpenPropertyStore(int access, out IPropertyStore? store);
     }
 
     [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("2A07407E-6497-4A18-9787-32F79BD0D98F")]

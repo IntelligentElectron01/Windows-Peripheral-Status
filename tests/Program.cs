@@ -49,7 +49,10 @@ if (args.Length > 0 && args[0] == "links")
 {
     // Lists, per paired device, how many Windows audio connections it has (what click-to-connect would use). Sends nothing.
     foreach (var d in new WindowsDeviceSource().Scan())
-        Console.WriteLine($"links: {d.Kind} connected={d.Connected} audio links={BluetoothConnector.AudioLinks(d.Id).Count}");
+    {
+        Console.WriteLine($"links:{d.Kind} connected={d.Connected} audio links={BluetoothConnector.AudioLinks(d.Id).Count}");
+        foreach (var line in BluetoothConnector.Describe(d.Id)) Console.WriteLine("   " + (line.Length > 150 ? line[^150..] : line));
+    }
     return 0;
 }
 
