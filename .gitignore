@@ -1,6 +1,18 @@
-.tools/
+# Build output
 bin/
 obj/
 dist/
-*.user
+
+# Project-local SDK and package cache (see docs/DOWNLOADS.md)
+.tools/
+
+# Editor and IDE files
 .vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Windows
+Thumbs.db
+Desktop.ini

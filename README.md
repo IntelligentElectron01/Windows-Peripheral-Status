@@ -12,6 +12,7 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - The same popup when a Bluetooth device connects, showing its battery (can be switched off); popups can stay out of the way of full-screen apps
 - An optional notification when a pinned device disconnects
 - Click a connected Bluetooth audio device on the taskbar strip to move the sound to it
+- A popup whenever Windows' sound output or microphone changes, however it was changed
 - Connect or disconnect Bluetooth headphones, earbuds and speakers from the device menu (they stay paired)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
@@ -51,7 +52,8 @@ Low battery, and a change of sound output or microphone (shown however it was ch
 
 ## Install (one command)
 
-Unzip `BTBatteryIndicator-win-x64.zip`, click the File Explorer address bar in that folder, type `powershell`, press Enter, then run:
+Get `BTBatteryIndicator-win-x64.zip` (from this repository's Releases page if one is published, or build it as shown
+below). Unzip it, click the File Explorer address bar in that folder, type `powershell`, press Enter, then run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
@@ -91,14 +93,33 @@ the installed copy. `.\build.ps1 install` builds and installs in one go. `.\buil
 ## How it works
 
 The app reads the battery value Windows already keeps for each paired Bluetooth device (the same number shown in
-Windows Settings). It only reads; it never connects to, pairs, or changes a device. Apple earbuds are the exception to
+Windows Settings). By itself it only reads: it never pairs or unpairs a device, and never connects, disconnects or
+changes one unprompted. Three things happen only when you click: connecting a paired audio device, disconnecting one,
+and choosing which device Windows plays sound through. Windows has no published call for choosing the sound output,
+so the app uses the unpublished one that Windows' own sound panel uses. Apple earbuds are the exception to
 "Windows already has it": they broadcast their levels instead, so while they are connected the app listens for that
 broadcast for a few seconds at a time. Listening is receive-only.
 
 Logitech receiver devices are the one case where the app sends anything: every two minutes it asks the device for its
 battery level using Logitech's own message format. It never changes a device setting, and the gear panel has a switch
-to turn this off. Settings and history are plain
-JSON files in `%LOCALAPPDATA%\BTBatteryIndicator`.
+to turn this off. Settings and history are plain JSON files in `%LOCALAPPDATA%\BTBatteryIndicator`.
+
+The app contains no network code and uses no third-party packages: only .NET and Windows' own interfaces.
+
+## Project layout
+
+| Path | What is there |
+| --- | --- |
+| `src/Core` | Reading devices, settings, history and alerts. No user interface. |
+| `src/App` | The tray app: panel, taskbar strip, popups, tray icons. |
+| `tests` | Automated checks, run by `.\build.ps1`. No test framework needed. |
+| `tools` | Scripts that measure resource use and how closely the strip follows the taskbar. |
+| `docs/SPEC.md` | Requirements, each with its pass/fail check and current status. |
+| `docs/DECISIONS.md` | Design decisions, one line each, with the reason. |
+| `docs/DOWNLOADS.md` | Everything the build downloads: source, version, licence, checksum. |
+| `build.ps1`, `install.ps1` | Build, test, package and install. |
+
+`BTBatteryIndicator.slnx` opens all three projects in Visual Studio or Rider.
 
 ## License
 

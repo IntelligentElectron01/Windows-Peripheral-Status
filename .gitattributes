@@ -1,0 +1,13 @@
+# Text files are stored with LF in the repository and checked out in the platform's style.
+* text=auto
+
+*.cs      text diff=csharp
+*.xaml    text
+*.csproj  text
+*.slnx    text
+*.md      text
+*.ps1     text eol=crlf
+*.manifest text
+
+*.png     binary
+*.ico     binary
