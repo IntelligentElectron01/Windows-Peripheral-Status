@@ -34,7 +34,19 @@ public sealed class TaskbarStrip : Window
     bool _lightTaskbar;
 
     /// <summary>Stay visible wherever it is, ignoring the taskbar (used for automated screenshots).</summary>
-    public bool Sticky { get; set; }
+    public bool Sticky
+    {
+        get => _sticky;
+        set { _sticky = value; if (value) { Width = double.NaN; SizeToContent = SizeToContent.WidthAndHeight; } }
+    }
+    bool _sticky;
+
+    // The window is wider than the pill and never changes size while items come and go: the pill is drawn
+    // against its right-hand edge and the rest is see-through (clicks pass through it). Resizing and then
+    // moving the window were two steps, so a new item (an earbud case, say) first pushed the pill to the right
+    // and only then was it pulled back. With a fixed window there is nothing to correct.
+    const double RoomStep = 160;
+    double _room = 640;
 
     /// <summary>Raised with the device ID of the item that was clicked, or null for the strip's edge.</summary>
     public event Action<string?>? Clicked;
@@ -51,13 +63,15 @@ public sealed class TaskbarStrip : Window
         Focusable = false;
         Topmost = true;
         ResizeMode = ResizeMode.NoResize;
-        SizeToContent = SizeToContent.WidthAndHeight;
+        SizeToContent = SizeToContent.Height;
+        Width = _room;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = -10000; Top = -10000;
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
         FontSize = 13;
         UseLayoutRounding = true;
-        Cursor = Cursors.Hand;
+        _pill.Cursor = Cursors.Hand;
+        _pill.HorizontalAlignment = HorizontalAlignment.Right;
         _pill.Child = _items;
         _pill.Height = 32;
         Content = _pill;
@@ -132,6 +146,10 @@ public sealed class TaskbarStrip : Window
                 _items.Children.Add(new Border { Width = 1, Height = 18, Background = fg, Opacity = 0.22, VerticalAlignment = VerticalAlignment.Center });
             _items.Children.Add(MakeItem(pinned[i].Id, pinned[i].Name, pinned[i].Dev, pinned[i].Kind, fg));
         }
+        // Only if the pill has outgrown the window is the window widened, a whole step at a time, so this is rare.
+        _pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (!Sticky && _pill.DesiredSize.Width > _room)
+            Width = _room = Math.Ceiling(_pill.DesiredSize.Width / RoomStep) * RoomStep;
         Place();
     }
 
@@ -264,10 +282,11 @@ public sealed class TaskbarStrip : Window
         if (!_gliding && GetWindow(_hwnd, 4 /* owner */) != bar) SetWindowLongPtrW(_hwnd, -8 /* owner */, bar);
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        int w = (int)Math.Ceiling(ActualWidth * scale), h = (int)Math.Ceiling(ActualHeight * scale);
+        int w = (int)Math.Ceiling(_room * scale), h = (int)Math.Ceiling(ActualHeight * scale);
         IntPtr tray = FindWindowExW(bar, IntPtr.Zero, "TrayNotifyWnd", null);
         int rightEdge = tray != IntPtr.Zero && GetWindowRect(tray, out RECT tr) && tr.Left > tb.Left ? tr.Left : tb.Right - (int)(280 * scale);
-        int x = Math.Max(tb.Left, rightEdge - w - (int)(8 * scale));
+        // The window's right edge sits just left of the tray; the pill is drawn against that edge.
+        int x = rightEdge - w - (int)(8 * scale);
         int y = (int)Math.Round(barTopOverride ?? tb.Top) + (barH - h) / 2;
         if (_gliding) return;   // the glide thread owns the position while the taskbar is moving
         if (!raise && x == _lastX && y == _lastY) return;
