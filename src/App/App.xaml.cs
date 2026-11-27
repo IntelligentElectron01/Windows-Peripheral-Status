@@ -153,7 +153,7 @@ public partial class App : Application
     {
         _strip = new TaskbarStrip(_c!);
         // Clicking a pinned device that is not connected tries to connect it. Clicking a connected audio device
-        // while another one is connected too moves the sound to it. Anything else opens the flyout, including
+        // that is not the sound output yet moves the sound to it. Anything else opens the flyout, including
         // devices that cannot be connected on request (mice, keyboards, controllers).
         _strip.Clicked += async id =>
         {

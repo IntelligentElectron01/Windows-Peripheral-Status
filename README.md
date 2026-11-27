@@ -11,7 +11,7 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - Low-battery warning at a level you choose (10–50%), shown as a small popup that drops down from the top of the screen
 - The same popup when a Bluetooth device connects, showing its battery (can be switched off); popups can stay out of the way of full-screen apps
 - An optional notification when a pinned device disconnects
-- With two or more Bluetooth audio devices connected, click one on the taskbar strip to move the sound to it
+- Click a connected Bluetooth audio device on the taskbar strip to move the sound to it
 - Connect or disconnect Bluetooth headphones, earbuds and speakers from the device menu (they stay paired)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
@@ -70,7 +70,7 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 - **Left-click** the tray icon: open the panel. **Right-click**: refresh or exit.
 - **Pin** button on a row: that device appears on the taskbar and moves with it when the taskbar auto-hides.
 - **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
-- **Click a connected headphone, earbud or speaker** on the strip while another one is connected too: Windows plays sound through the one you clicked.
+- **Click a connected headphone, earbud or speaker** on the strip: Windows plays sound through it, instead of the PC speakers or whatever was playing before. If it is already playing, the click opens the panel.
 - **Click a row** or the **…** button: battery history, rename, hide.
 - **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
 

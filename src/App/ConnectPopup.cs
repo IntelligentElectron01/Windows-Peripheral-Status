@@ -54,14 +54,26 @@ public sealed class ConnectPopup : Window
     static bool HeldBack(Settings s)
     {
         if (SHQueryUserNotificationState(out int state) == 0 && state is 3 or 4) return true;
-        if (!s.QuietInFullScreen) return false;
+        return s.QuietInFullScreen && FullScreenInFront();
+    }
+
+    /// <summary>
+    /// True while the window in front fills its whole screen (a game, full-screen video, a presentation).
+    /// </summary>
+    /// <param name="sameScreenAs">Only count it when it is on the same screen as this window.</param>
+    internal static bool FullScreenInFront(IntPtr sameScreenAs = default)
+    {
         IntPtr front = GetForegroundWindow();
         if (front == IntPtr.Zero) return false;
         var cls = new System.Text.StringBuilder(64);
         GetClassNameW(front, cls, 64);
-        if (cls.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;   // the desktop itself
+        string name = cls.ToString();
+        // The desktop, the taskbar, Start and Search are not apps covering the screen.
+        if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Windows.UI.Core.CoreWindow" || name.StartsWith("Xaml", StringComparison.Ordinal)) return false;
+        IntPtr screen = MonitorFromWindow(front, 2);
+        if (sameScreenAs != IntPtr.Zero && MonitorFromWindow(sameScreenAs, 2) != screen) return false;
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetWindowRect(front, out var w) || !GetMonitorInfoW(MonitorFromWindow(front, 2), ref info)) return false;
+        if (!GetWindowRect(front, out var w) || !GetMonitorInfoW(screen, ref info)) return false;
         // Exactly the screen's size. An ordinary maximised window is a few pixels larger on every side (its hidden
         // border), which is how it is told apart, including on a PC whose taskbar auto-hides.
         var m = info.Monitor;

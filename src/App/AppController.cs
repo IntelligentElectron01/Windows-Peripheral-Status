@@ -203,20 +203,18 @@ public sealed class AppController
     public event Action<DeviceReading>? OutputSwitched;
 
     /// <summary>
-    /// When more than one Bluetooth audio device is connected, makes this one the sound output (only on the user's
-    /// click). Returns false when there was nothing to switch: one audio device, not an audio device, or already playing.
+    /// Makes a connected Bluetooth audio device the sound output (only on the user's click). Returns false when
+    /// there was nothing to switch: not connected, not an audio device, or already the output.
     /// </summary>
     public async Task<bool> TrySwitchOutputAsync(string id)
     {
         if (Devices.FirstOrDefault(d => d.Id == id) is not { Connected: true } device) return false;
-        var others = Devices.Where(d => d.Connected && d.Id != id).Select(d => d.Id).ToList();
-        if (others.Count == 0) return false;
         try
         {
+            // Whatever is playing now (PC speakers, a monitor, another Bluetooth device), the clicked device takes over.
             bool? switched = await Task.Run<bool?>(() =>
             {
                 if (BluetoothConnector.OutputOf(id) is not { } mine || mine == BluetoothConnector.CurrentOutput()) return null;
-                if (!others.Any(o => BluetoothConnector.OutputOf(o) is not null)) return null;
                 return BluetoothConnector.SetOutput(mine);
             });
             if (switched is null) return false;

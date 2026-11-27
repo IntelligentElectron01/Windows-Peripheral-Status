@@ -72,7 +72,12 @@ public sealed class TaskbarStrip : Window
         };
         _onExplorerMoved = (_, evt, hwnd, idObject, _, _, _) =>
         {
-            if (evt == 0x0003) { Nudge(10); return; }   // another window came to the front (Start, Search, ...)
+            if (evt == 0x0003)   // another window came to the front (Start, Search, a full-screen app, ...)
+            {
+                if (_hookedBar != IntPtr.Zero && ConnectPopup.FullScreenInFront(_hookedBar)) Park();
+                Nudge(10);
+                return;
+            }
             if (hwnd != _hookedBar || idObject != 0) return;
             if (evt == 0x800B) StartGlide(); else Nudge(3);
         };
@@ -243,10 +248,12 @@ public sealed class TaskbarStrip : Window
         SetAvailable(true);
         Hook(bar);
 
-        // A taskbar set to auto-hide tells the truth through its position: when it is off screen so is the strip.
-        // A fixed taskbar never moves, so there the strip steps aside while a full-screen app, game or presentation
-        // is covering it.
-        if (!IsAutoHide() && SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4) { Park(); return; }
+        // A taskbar set to auto-hide takes the strip with it when it slides off screen. But a full-screen app can
+        // also simply cover the taskbar while it is still up (and a fixed taskbar never moves at all), and the
+        // strip, being always on top, would be left floating over that app. So it steps aside while a
+        // full-screen app, game or presentation is in front.
+        if (ConnectPopup.FullScreenInFront(bar)
+            || (!IsAutoHide() && SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4)) { Park(); return; }
 
         // The strip is never hidden while wanted (hiding and re-showing a window blinks); it rides along with the
         // taskbar, off the edge of the screen and back.
@@ -308,7 +315,8 @@ public sealed class TaskbarStrip : Window
     /// <summary>Moves the strip off screen without hiding it.</summary>
     void Park()
     {
-        if (_hwnd == IntPtr.Zero || !IsVisible || _lastX == -32000) return;
+        // Not mid-slide: the slide would move the strip straight back. The next placement parks it instead.
+        if (_hwnd == IntPtr.Zero || !IsVisible || _gliding || _lastX == -32000) return;
         _lastX = -32000; _lastY = -32000;
         SetWindowPos(_hwnd, IntPtr.Zero, -32000, -32000, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010);
     }
