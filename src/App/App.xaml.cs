@@ -230,6 +230,7 @@ public partial class App : Application
             var now = await Task.Run(() => input ? BluetoothConnector.DescribeInput() : BluetoothConnector.DescribeOutput());
             if (now is null || now.Id == (input ? _lastInput : _lastOutput)) return;
             if (input) _lastInput = now.Id; else _lastOutput = now.Id;
+            if (!(input ? _c!.Settings.InputPopup : _c!.Settings.OutputPopup)) return;
             var kind = input ? PopupKind.Input : PopupKind.Output;
             if (await _c!.DeviceForOutputAsync(now.Id, input) is { } device) { ConnectPopup.Announce(_c, device, kind); return; }
             ConnectPopup.Announce(_c, OutputAsDevice(now, HasBattery(), input), kind, OutputGlyph(now.Kind, HasBattery(), input));

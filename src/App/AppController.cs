@@ -20,7 +20,8 @@ public sealed class AppController
     readonly PodsTracker _podsTracker = new();
     IReadOnlyList<DeviceReading> _raw = [];
     DateTime _lastListen = DateTime.MinValue;
-    bool _listening;
+    bool _listening, _heardPods = true;
+    readonly DispatcherTimer _podsTimer = new() { Interval = TimeSpan.FromSeconds(4) };
 
     public Settings Settings { get; }
     public HistoryStore History { get; }
@@ -55,6 +56,7 @@ public sealed class AppController
         Demo?.SeedHistory(History, DateTime.UtcNow);
         _timer = new DispatcherTimer { Interval = ScanInterval };
         _timer.Tick += async (_, _) => await RefreshAsync();
+        _podsTimer.Tick += async (_, _) => await ListenForPodsAsync();
     }
 
     public void Start()
@@ -89,14 +91,21 @@ public sealed class AppController
     /// </summary>
     async Task ListenForPodsAsync()
     {
-        if (_pods is null || _listening || !PodsTracker.Wanted(_raw)) return;
+        if (_pods is null) return;
         var now = DateTime.UtcNow;
-        bool known = _podsTracker.Enrich(_raw, now).Any(d => d.Pods is not null);
-        if (known && now - _lastListen < TimeSpan.FromMinutes(2)) return;
+        bool wanted = PodsTracker.Wanted(_raw);
+        var current = wanted ? _podsTracker.Enrich(_raw, now) : _raw;
+        bool known = current.Any(d => d.Pods is not null), oneInEar = wanted && PodsTracker.OneInEar(current);
+        // While one bud is being worn the regular 30-second scan is too slow to notice the second one going in,
+        // so a faster timer keeps listening until both are in (or out).
+        _podsTimer.IsEnabled = oneInEar;
+        if (!wanted || _listening) return;
+        if (now - _lastListen < PodsTracker.ListenGap(known, oneInEar, _heardPods)) return;
         _listening = true;
         try
         {
-            var heard = await _pods.ListenAsync(TimeSpan.FromSeconds(5));
+            var heard = await _pods.ListenAsync(TimeSpan.FromSeconds(oneInEar ? 2 : 5));
+            _heardPods = heard.Any(h => h.Rssi >= PodsTracker.MinRssi);
             _lastListen = DateTime.UtcNow;
             if (_podsTracker.Update(heard, _lastListen))
             {
@@ -105,7 +114,11 @@ public sealed class AppController
             }
         }
         catch (Exception e) { Log(e); }
-        finally { _listening = false; }
+        finally
+        {
+            _listening = false;
+            _podsTimer.IsEnabled = PodsTracker.Wanted(_raw) && PodsTracker.OneInEar(Devices);
+        }
     }
 
     void Apply(IReadOnlyList<DeviceReading> list)

@@ -79,8 +79,12 @@
         <!-- Settings (shown with the gear button) -->
         <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
           <Border Height="1" Background="{DynamicResource Stroke}"/>
-          <Grid Margin="16,12,16,0">
-            <TextBlock Text="Low-battery notification" VerticalAlignment="Center"/>
+          <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+          <TextBlock Text="Notifications" Margin="16,12,16,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Fg2}"/>
+          <Grid Margin="16,10,16,0">
+            <TextBlock Text="Low battery" VerticalAlignment="Center"
+                       ToolTip="A popup when a device drops to the level below."/>
             <CheckBox x:Name="LowToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
                       Click="LowToggle_Click" AutomationProperties.Name="Low-battery notification"/>
           </Grid>
@@ -95,6 +99,38 @@
                     ValueChanged="Threshold_Changed" AutomationProperties.Name="Low-battery threshold"/>
           </Grid>
           <Grid Margin="16,12,16,0">
+            <TextBlock Text="Device connected" VerticalAlignment="Center"
+                       ToolTip="A small pill drops down from the top of the screen for a few seconds. Devices on a USB receiver are left out."/>
+            <CheckBox x:Name="ConnectPopupToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="ConnectPopupToggle_Click" AutomationProperties.Name="Popup when a device connects"/>
+          </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Pinned device disconnected" VerticalAlignment="Center"
+                       ToolTip="A Windows notification when a pinned device disconnects."/>
+            <CheckBox x:Name="DisconnectToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="DisconnectToggle_Click" AutomationProperties.Name="Notify on disconnect"/>
+          </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Sound output changed" VerticalAlignment="Center"
+                       ToolTip="A popup naming the new output, however it was changed."/>
+            <CheckBox x:Name="OutputToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="OutputToggle_Click" AutomationProperties.Name="Popup when the sound output changes"/>
+          </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Microphone changed" VerticalAlignment="Center"
+                       ToolTip="A popup naming the new microphone, however it was changed."/>
+            <CheckBox x:Name="InputToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="InputToggle_Click" AutomationProperties.Name="Popup when the microphone changes"/>
+          </Grid>
+          <Grid Margin="16,12,16,0">
+            <TextBlock Text="Hide popups in full-screen apps" VerticalAlignment="Center"
+                       ToolTip="No popups while a game or video fills the screen. A low-battery warning goes to Windows notifications instead."/>
+            <CheckBox x:Name="QuietToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                      Click="QuietToggle_Click" AutomationProperties.Name="Hide popups in full-screen apps"/>
+          </Grid>
+          <Border Height="1" Background="{DynamicResource Stroke}" Margin="0,14,0,0"/>
+          <TextBlock Text="General" Margin="16,12,16,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Fg2}"/>
+          <Grid Margin="16,10,16,0">
             <TextBlock Text="Accent colour" VerticalAlignment="Center"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
               <RadioButton x:Name="AccentBlue" Style="{StaticResource Chip}" Content="Blue" GroupName="accent" Click="Accent_Click"/>
@@ -141,6 +177,8 @@
             </ItemsControl>
           </StackPanel>
           <Border Height="12"/>
+          </StackPanel>
+          </ScrollViewer>
         </StackPanel>
 
         <!-- Footer -->
@@ -149,23 +187,6 @@
           <TextBlock Text="Start with Windows" VerticalAlignment="Center"/>
           <CheckBox x:Name="StartToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
                     Click="StartToggle_Click" AutomationProperties.Name="Start with Windows"/>
-        </Grid>
-        <Grid Margin="16,16,16,0">
-          <TextBlock Text="Notify on disconnect" VerticalAlignment="Center" ToolTip="Applies to pinned devices"/>
-          <CheckBox x:Name="DisconnectToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
-                    Click="DisconnectToggle_Click" AutomationProperties.Name="Notify on disconnect"/>
-        </Grid>
-        <Grid Margin="16,16,16,0">
-          <TextBlock Text="Popup when a device connects" VerticalAlignment="Center"
-                     ToolTip="A small pill drops down from the top of the screen for a few seconds. Devices on a USB receiver are left out."/>
-          <CheckBox x:Name="ConnectPopupToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
-                    Click="ConnectPopupToggle_Click" AutomationProperties.Name="Popup when a device connects"/>
-        </Grid>
-        <Grid Margin="16,16,16,0">
-          <TextBlock Text="Hide popups in full-screen apps" VerticalAlignment="Center"
-                     ToolTip="No popups while a game or video fills the screen. A low-battery warning goes to Windows notifications instead."/>
-          <CheckBox x:Name="QuietToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
-                    Click="QuietToggle_Click" AutomationProperties.Name="Hide popups in full-screen apps"/>
         </Grid>
         <TextBlock Margin="16,14,16,0" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource Fg2}"
                    Text="Shows Bluetooth devices and Logitech wireless devices on a USB receiver. Other 2.4 GHz USB-dongle devices aren't supported."/>

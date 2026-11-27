@@ -575,6 +575,12 @@ Check(BluetoothConnector.Classify(false, 1, false) == BluetoothConnector.OutputK
 Check(BluetoothConnector.Classify(true, 1, true) == BluetoothConnector.OutputKind.Bluetooth, "a Bluetooth output is never taken for the PC's own speakers");
 Check(BluetoothConnector.Classify(false, 3, true) == BluetoothConnector.OutputKind.Headphones && BluetoothConnector.Classify(false, 9, false) == BluetoothConnector.OutputKind.Display, "wired headphones and a screen's speakers are told apart");
 Check(BluetoothConnector.Classify(false, 4, true, input: true) == BluetoothConnector.OutputKind.BuiltIn && BluetoothConnector.Classify(false, 4, false, input: true) == BluetoothConnector.OutputKind.Speakers, "the PC's own microphone is told apart from a plugged-in one");
+Check(PodsTracker.ListenGap(known: true, oneInEar: true, heardLastTime: true) <= TimeSpan.FromSeconds(4), "one bud worn: listening repeats within a few seconds");
+Check(PodsTracker.ListenGap(true, false, true) >= TimeSpan.FromSeconds(20) && PodsTracker.ListenGap(true, true, false) >= TimeSpan.FromMinutes(1), "both worn or silent earbuds: listening stays occasional");
+Check(PodsTracker.ListenGap(false, false, false) == TimeSpan.Zero, "nothing known yet: listen straight away");
+Check(PodsTracker.OneInEar([new DeviceReading("A", "x", DeviceKind.Headphones, true, 80) { Pods = new PodLevels(1, 80, 80, null, LeftInEar: true) }])
+      && !PodsTracker.OneInEar([new DeviceReading("A", "x", DeviceKind.Headphones, true, 80) { Pods = new PodLevels(1, 80, 80, null, LeftInEar: true, RightInEar: true) }]), "one bud worn is told apart from both worn");
+Check(new Settings().OutputPopup && new Settings().InputPopup, "output and microphone popups are on by default");
 Check(new Settings().QuietInFullScreen, "popups are held back in full-screen apps by default");
     Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("{\"QuietInFullScreen\":false}")!.QuietInFullScreen == false, "the full-screen setting is read back from the settings file");
 }

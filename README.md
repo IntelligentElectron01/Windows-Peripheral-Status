@@ -77,7 +77,7 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 - **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
 - **Click a connected headphone, earbud or speaker** on the strip: Windows plays sound through it, instead of the PC speakers or whatever was playing before. If it is already playing, the click opens the panel.
 - **Click a row** or the **…** button: battery history, rename, hide.
-- **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
+- **Gear** button: a switch for each notification (low battery and its level, device connected or disconnected, sound output or microphone changed, quiet in full-screen apps), accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
 
 ## Build from source (one command)
 

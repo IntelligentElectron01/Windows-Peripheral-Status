@@ -151,6 +151,22 @@ public sealed class PodsTracker
     public PodLevels? GetAny(DateTime utcNow) => _current.Values
         .Where(c => utcNow - c.At < MaxAge).OrderByDescending(c => c.At).Select(c => c.Levels).FirstOrDefault();
 
+    /// <summary>
+    /// How long to wait between listening bursts. Listening uses the Bluetooth radio, so it is done only as
+    /// often as there is something to learn: at once while nothing is known yet; rarely while the earbuds are
+    /// silent (in their closed case); every few seconds while exactly one bud is being worn, so that putting
+    /// the second one in shows straight away; otherwise with every regular scan.
+    /// </summary>
+    public static TimeSpan ListenGap(bool known, bool oneInEar, bool heardLastTime) =>
+        !known ? TimeSpan.Zero
+        : !heardLastTime ? TimeSpan.FromMinutes(2)
+        : oneInEar ? TimeSpan.FromSeconds(3)
+        : TimeSpan.FromSeconds(25);
+
+    /// <summary>True while exactly one bud of some connected earbuds is being worn.</summary>
+    public static bool OneInEar(IEnumerable<DeviceReading> devices) =>
+        devices.Any(d => d is { Connected: true, Pods: { } p } && p.LeftInEar != p.RightInEar);
+
     /// <summary>True if a connected Apple audio device has no level from Windows, i.e. listening is worthwhile.</summary>
     public static bool Wanted(IEnumerable<DeviceReading> devices) => devices.Any(NeedsPods);
 

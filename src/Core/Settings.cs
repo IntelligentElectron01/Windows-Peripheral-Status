@@ -22,6 +22,10 @@ public sealed class Settings
     public bool NotifyOnDisconnect { get; set; }
     /// <summary>Show a small popup at the top of the screen when a Bluetooth device connects.</summary>
     public bool ConnectPopup { get; set; } = true;
+    /// <summary>Show a popup when Windows' sound output changes, however it was changed.</summary>
+    public bool OutputPopup { get; set; } = true;
+    /// <summary>Show a popup when the microphone Windows listens through changes.</summary>
+    public bool InputPopup { get; set; } = true;
     /// <summary>Hold popups back while an app that fills the whole screen is in front (games, full-screen video).</summary>
     public bool QuietInFullScreen { get; set; } = true;
     /// <summary>"Blue" (default) or "System" (Windows accent colour).</summary>
