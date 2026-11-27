@@ -53,7 +53,7 @@ Low battery, and a change of sound output or microphone (shown however it was ch
 
 ## Install (one command)
 
-Get `WirelessDeviceMonitor-win-x64.zip` (from this repository's Releases page if one is published, or build it as shown
+Get `WirelessDeviceMonitor-win-x64.zip` (from this repository's [Releases page](https://github.com/IntelligentElectron01/Wireless-Device-Monitor-for-Windows/releases), or build it as shown
 below). Unzip it, click the File Explorer address bar in that folder, type `powershell`, press Enter, then run:
 
 ```powershell
