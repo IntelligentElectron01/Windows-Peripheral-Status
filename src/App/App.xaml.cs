@@ -100,6 +100,15 @@ public partial class App : Application
         // The clean-up runs once after the app's windows close, when their memory will not be wanted again for
         // a while. It is deliberately not repeated on a timer: while idle the app does not grow (see --memlog),
         // and pushing out memory that the next device scan needs only makes Windows fetch it straight back.
+        if (args.Contains("--strip-trace"))
+        {
+            // Developer helper: timings of how the strip follows the taskbar, one line per event.
+            string traceFile = Path.Combine(dataDir, "strip-trace.txt");
+            File.WriteAllText(traceFile, "");
+            var traceClock = System.Diagnostics.Stopwatch.StartNew();
+            var traceLock = new object();
+            TaskbarStrip.Trace = line => { lock (traceLock) File.AppendAllText(traceFile, $"{traceClock.ElapsedMilliseconds,7} | {line}\n"); };
+        }
         if (args.Contains("--memlog"))
         {
             // Developer helper: one line of memory figures every 30 seconds.

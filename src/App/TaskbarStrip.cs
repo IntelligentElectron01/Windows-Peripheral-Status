@@ -84,8 +84,10 @@ public sealed class TaskbarStrip : Window
             long ex = GetWindowLongPtrW(_hwnd, -20).ToInt64();
             SetWindowLongPtrW(_hwnd, -20, new IntPtr(ex | 0x08000000L /* NOACTIVATE */ | 0x00000080L /* TOOLWINDOW */));
         };
-        _onExplorerMoved = (_, evt, hwnd, idObject, _, _, _) =>
+        _onExplorerMoved = (_, evt, hwnd, idObject, _, _, time) =>
         {
+            if (Trace is not null && (evt == 0x0003 || (hwnd == _hookedBar && idObject == 0)))
+                Trace($"event {evt:X} bar={(hwnd == _hookedBar)} arrived {unchecked((uint)Environment.TickCount - time)} ms after it happened; gliding={_gliding} lastX={_lastX}");
             if (evt == 0x0003)   // another window came to the front (Start, Search, a full-screen app, ...)
             {
                 if (_hookedBar != IntPtr.Zero && GetWindowRect(_hookedBar, out RECT tb))
@@ -270,6 +272,13 @@ public sealed class TaskbarStrip : Window
     void MoveTo(double? barTopOverride, bool raise)
     {
         if (Sticky) return;
+        long traceStart = Trace is null ? 0 : Stopwatch.GetTimestamp();
+        try { MoveToCore(barTopOverride, raise); }
+        finally { if (Trace is not null && Stopwatch.GetElapsedTime(traceStart).TotalMilliseconds > 15) Trace($"SLOW placement: {Stopwatch.GetElapsedTime(traceStart).TotalMilliseconds:0} ms"); }
+    }
+
+    void MoveToCore(double? barTopOverride, bool raise)
+    {
         if (!_wanted) { SetAvailable(true); Unhook(); HideStrip(); return; }
 
         IntPtr bar = FindWindowW("Shell_TrayWnd", null);
@@ -306,8 +315,9 @@ public sealed class TaskbarStrip : Window
         _lastX = x; _lastY = y;
         // While gliding, only move: re-ordering windows involves Explorer, which is busy animating the taskbar and
         // would hold this call up for a noticeable fraction of the slide.
-        if (raise) SetWindowPos(_hwnd, new IntPtr(-1) /* always on top */, x, y, 0, 0, 0x0001 /* NOSIZE */ | 0x0010 /* NOACTIVATE */);
-        else SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+        // Moving never waits on Windows; putting the strip in front can, so that part goes to the helper thread.
+        SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+        if (raise) BringToFront();
         if (!s_rehearsed) { s_rehearsed = true; Dispatcher.BeginInvoke(Rehearse, DispatcherPriority.ApplicationIdle); }
     }
 
@@ -393,13 +403,39 @@ public sealed class TaskbarStrip : Window
         catch (EntryPointNotFoundException) { return false; }
     }
 
-    /// <summary>Front of the always-on-top windows, without moving. Does not wait on other programs.</summary>
+    /// <summary>
+    /// Front of the always-on-top windows, without moving. Windows makes such a request wait while it is
+    /// animating the taskbar (measured: about 200 ms, the whole slide). Made from the app's main thread, that
+    /// wait also held up the news that the taskbar had started moving, so the strip set off only when the slide
+    /// was over. The request is therefore handed to a small helper thread that can wait without holding anything up.
+    /// </summary>
     void BringToFront()
     {
         if (!_wanted || Sticky || _hwnd == IntPtr.Zero || !IsVisible || _lastX == -32000) return;
-        SetWindowPos(_hwnd, new IntPtr(-1), 0, 0, 0, 0,
-            0x0001 /* NOSIZE */ | 0x0002 /* NOMOVE */ | 0x0010 /* NOACTIVATE */ | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+        _orderTarget = _hwnd;
+        if (_orderThread is null)
+        {
+            _orderThread = new Thread(() =>
+            {
+                while (true)
+                {
+                    _orderWanted.WaitOne();
+                    IntPtr hwnd = _orderTarget;
+                    if (hwnd == IntPtr.Zero) continue;
+                    long t0 = Stopwatch.GetTimestamp();
+                    SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
+                        0x0001 /* NOSIZE */ | 0x0002 /* NOMOVE */ | 0x0010 /* NOACTIVATE */ | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+                    Trace?.Invoke($"brought to front in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:0} ms");
+                }
+            }) { IsBackground = true, Name = "strip-order" };
+            _orderThread.Start();
+        }
+        _orderWanted.Set();
     }
+
+    static Thread? _orderThread;
+    static readonly AutoResetEvent _orderWanted = new(false);
+    static volatile IntPtr _orderTarget;
 
     /// <summary>Moves the strip off screen without hiding it.</summary>
     void Park()
@@ -424,6 +460,9 @@ public sealed class TaskbarStrip : Window
 
     volatile bool _gliding;
 
+    /// <summary>Developer aid: receives one line per taskbar event and per follow run, with timings.</summary>
+    internal static Action<string>? Trace;
+
     void StartGlide()
     {
         if (!_wanted || Sticky || _gliding || _hwnd == IntPtr.Zero || !IsVisible) return;
@@ -436,6 +475,7 @@ public sealed class TaskbarStrip : Window
         int startTop = _lastY - offset;   // where the taskbar was when the strip was last placed
         _gliding = true;
 
+        Trace?.Invoke($"follow starts: taskbar top {tb.Top}, strip was placed for {startTop}");
         var thread = new Thread(() =>
         {
             try { Glide(hwnd, bar, x, offset, shownTop, hiddenTop, startTop); }
@@ -539,7 +579,29 @@ public sealed class TaskbarStrip : Window
         catch { return false; }
     }
 
+    /// <summary>
+    /// Whether the taskbar is set to hide itself. Finding out means asking Explorer and waiting for its answer,
+    /// and Explorer does not answer while it is animating the taskbar (measured: about 200 ms, the whole slide).
+    /// Asked from the app's main thread, that wait held up the news that the taskbar had started moving. So the
+    /// answer is remembered, and refreshed every few seconds from a background thread that is free to wait.
+    /// </summary>
     static bool IsAutoHide()
+    {
+        long now = Environment.TickCount64;
+        if (s_autoHideAsked == 0) { s_autoHideAsked = now; s_autoHide = AskAutoHide(); }   // first time, at start-up
+        else if (now - s_autoHideAsked > 5000 && Interlocked.Exchange(ref s_autoHideAsking, 1) == 0)
+        {
+            s_autoHideAsked = now;
+            ThreadPool.QueueUserWorkItem(_ => { try { s_autoHide = AskAutoHide(); } finally { s_autoHideAsking = 0; } });
+        }
+        return s_autoHide;
+    }
+
+    static volatile bool s_autoHide;
+    static long s_autoHideAsked;
+    static int s_autoHideAsking;
+
+    static bool AskAutoHide()
     {
         var d = new APPBARDATA { cbSize = (uint)Marshal.SizeOf<APPBARDATA>() };
         return (SHAppBarMessage(4 /* get state */, ref d).ToUInt64() & 1) != 0;
