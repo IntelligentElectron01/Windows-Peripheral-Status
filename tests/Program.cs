@@ -581,6 +581,9 @@ Check(PodsTracker.ListenGap(false, false, false) == TimeSpan.Zero, "nothing know
 Check(PodsTracker.OneInEar([new DeviceReading("A", "x", DeviceKind.Headphones, true, 80) { Pods = new PodLevels(1, 80, 80, null, LeftInEar: true) }])
       && !PodsTracker.OneInEar([new DeviceReading("A", "x", DeviceKind.Headphones, true, 80) { Pods = new PodLevels(1, 80, 80, null, LeftInEar: true, RightInEar: true) }]), "one bud worn is told apart from both worn");
 Check(new Settings().OutputPopup && new Settings().InputPopup, "output and microphone popups are on by default");
+Check(!StripRules.ShouldStepAside(barOnScreen: false, barAboveApp: false), "taskbar slid away under a full-screen app: the strip stays attached, ready to slide back with it");
+Check(!StripRules.ShouldStepAside(barOnScreen: true, barAboveApp: true), "taskbar shown on top of a full-screen app: the strip shows with it");
+Check(StripRules.ShouldStepAside(barOnScreen: true, barAboveApp: false), "taskbar still up but under a full-screen app: the strip steps aside");
 Check(new Settings().QuietInFullScreen, "popups are held back in full-screen apps by default");
     Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("{\"QuietInFullScreen\":false}")!.QuietInFullScreen == false, "the full-screen setting is read back from the settings file");
 }

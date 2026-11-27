@@ -88,10 +88,16 @@ public sealed class TaskbarStrip : Window
         {
             if (evt == 0x0003)   // another window came to the front (Start, Search, a full-screen app, ...)
             {
-                if (_hookedBar != IntPtr.Zero && ConnectPopup.FullScreenInFront(_hookedBar)) Park();
+                if (_hookedBar != IntPtr.Zero && GetWindowRect(_hookedBar, out RECT tb))
+                {
+                    if (Covered(_hookedBar, tb)) Park();
+                    else if (_lastX == -32000) Place(false);   // the app that covered the taskbar has gone: back at once
+                }
                 Nudge(10);
                 return;
             }
+            // The tray growing or shrinking (an icon appears, the clock changes width) moves the strip's place.
+            if (hwnd == _tray && hwnd != IntPtr.Zero && idObject == 0 && evt == 0x800B) { if (!_gliding) Place(false); return; }
             if (hwnd != _hookedBar || idObject != 0) return;
             if (evt == 0x800B) StartGlide(); else Nudge(3);
         };
@@ -101,19 +107,26 @@ public sealed class TaskbarStrip : Window
         _raise.Tick += (_, _) =>
         {
             if (BarLifted()) BringToFront();
+            // Windows may take a moment to put a full-screen app above the taskbar, so keep checking for a bit.
+            if (_hookedBar != IntPtr.Zero && GetWindowRect(_hookedBar, out RECT tb) && Covered(_hookedBar, tb)) Park();
             if (--_raisesLeft > 0 || _gliding) return;
             _raise.Stop(); Place();
         };
         _timer.Tick += (_, _) => Place();
+        // A new screen size or scaling moves the taskbar without sliding it.
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         _c.Updated += Rebuild;
         Theme.Changed += Rebuild;
         Closed += (_, _) =>
         {
             _timer.Stop(); _raise.Stop(); Unhook();
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
             _c.Updated -= Rebuild; Theme.Changed -= Rebuild;
         };
         Rebuild();
     }
+
+    void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => Nudge(10));
 
     public void Rebuild()
     {
@@ -266,11 +279,11 @@ public sealed class TaskbarStrip : Window
         SetAvailable(true);
         Hook(bar);
 
-        // A taskbar set to auto-hide takes the strip with it when it slides off screen. But a full-screen app can
-        // also simply cover the taskbar while it is still up (and a fixed taskbar never moves at all), and the
-        // strip, being always on top, would be left floating over that app. So it steps aside while a
-        // full-screen app, game or presentation is in front.
-        if (ConnectPopup.FullScreenInFront(bar)
+        // The strip belongs to the taskbar: wherever the taskbar is, on screen or slid away, the strip is on it.
+        // The one exception is a full-screen app lying on top of a taskbar that is still up. The strip is always
+        // on top, so it would be left floating over that app; only then does it step aside. (While the taskbar
+        // is slid away the strip is off screen with it and stays attached, ready to slide back in with it.)
+        if (Covered(bar, tb)
             || (!IsAutoHide() && SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4)) { Park(); return; }
 
         // The strip is never hidden while wanted (hiding and re-showing a window blinks); it rides along with the
@@ -283,7 +296,7 @@ public sealed class TaskbarStrip : Window
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         int w = (int)Math.Ceiling(_room * scale), h = (int)Math.Ceiling(ActualHeight * scale);
-        IntPtr tray = FindWindowExW(bar, IntPtr.Zero, "TrayNotifyWnd", null);
+        IntPtr tray = _tray = FindWindowExW(bar, IntPtr.Zero, "TrayNotifyWnd", null);
         int rightEdge = tray != IntPtr.Zero && GetWindowRect(tray, out RECT tr) && tr.Left > tb.Left ? tr.Left : tb.Right - (int)(280 * scale);
         // The window's right edge sits just left of the tray; the pill is drawn against that edge.
         int x = rightEdge - w - (int)(8 * scale);
@@ -295,9 +308,66 @@ public sealed class TaskbarStrip : Window
         // would hold this call up for a noticeable fraction of the slide.
         if (raise) SetWindowPos(_hwnd, new IntPtr(-1) /* always on top */, x, y, 0, 0, 0x0001 /* NOSIZE */ | 0x0010 /* NOACTIVATE */);
         else SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 /* NOZORDER */ | 0x0010 | 0x0200 /* NOOWNERZORDER */ | 0x0400 /* NOSENDCHANGING */);
+        if (!s_rehearsed) { s_rehearsed = true; Dispatcher.BeginInvoke(Rehearse, DispatcherPriority.ApplicationIdle); }
+    }
+
+    static bool s_rehearsed;
+
+    /// <summary>
+    /// The first time any code runs, .NET has to prepare it, which takes a moment. For the code that follows the
+    /// taskbar that moment used to fall on the first slide after the app started: the taskbar came up and the
+    /// strip set off about a fifth of a second late. So everything is prepared ahead of time, and the follow
+    /// routine is run once while the taskbar is standing still (it finds nothing to follow and ends by itself).
+    /// </summary>
+    void Rehearse()
+    {
+        new Thread(() =>
+        {
+            const System.Reflection.BindingFlags all = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+            var types = new List<Type> { typeof(TaskbarStrip), typeof(ConnectPopup), typeof(StripRules) };
+            types.AddRange(typeof(TaskbarStrip).GetNestedTypes(all));
+            foreach (var type in types)
+                foreach (var method in type.GetMethods(all))
+                {
+                    if (method.IsAbstract || method.ContainsGenericParameters || type.ContainsGenericParameters) continue;
+                    try { System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(method.MethodHandle); }
+                    catch (Exception e) when (e is ArgumentException or InvalidOperationException or NotSupportedException or TypeLoadException) { }
+                }
+            Dispatcher.BeginInvoke(() =>
+            {
+                StartGlide();
+                if (_hookedBar != IntPtr.Zero && GetWindowRect(_hookedBar, out RECT tb)) Covered(_hookedBar, tb);
+                BarLifted();
+            });
+        }) { IsBackground = true, Name = "strip-rehearsal", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
     int _raisesLeft;
+    IntPtr _tray;
+
+    /// <summary>True while a full-screen app is lying on top of a taskbar that is on screen.</summary>
+    static bool Covered(IntPtr bar, RECT tb)
+    {
+        IntPtr app = ConnectPopup.FullScreenWindowInFront(bar);
+        if (app == IntPtr.Zero) return false;
+        var screen = System.Windows.Forms.Screen.FromHandle(bar).Bounds;
+        int shown = Math.Min(tb.Bottom, screen.Bottom) - Math.Max(tb.Top, screen.Top);
+        return StripRules.ShouldStepAside(barOnScreen: shown * 2 >= tb.Bottom - tb.Top, barAboveApp: IsAbove(bar, app));
+    }
+
+    /// <summary>Whether one window is stacked above another.</summary>
+    static bool IsAbove(IntPtr upper, IntPtr lower)
+    {
+        IntPtr h = lower;
+        for (int i = 0; i < 4000; i++)
+        {
+            h = GetWindow(h, 3 /* the window above */);
+            if (h == IntPtr.Zero) return false;
+            if (h == upper) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// While Start or Search is open Windows lifts the taskbar above every ordinary always-on-top window. Only

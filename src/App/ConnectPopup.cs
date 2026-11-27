@@ -80,9 +80,15 @@ public sealed class ConnectPopup : Window
     /// True while the window in front fills its whole screen (a game, full-screen video, a presentation).
     /// </summary>
     /// <param name="sameScreenAs">Only count it when it is on the same screen as this window.</param>
-    internal static bool FullScreenInFront(IntPtr sameScreenAs = default)
+    internal static bool FullScreenInFront(IntPtr sameScreenAs = default) => FullScreenWindowInFront(sameScreenAs) != IntPtr.Zero;
+
+    /// <summary>The window in front if it fills its whole screen, otherwise nothing.</summary>
+    internal static IntPtr FullScreenWindowInFront(IntPtr sameScreenAs = default) => IsFullScreen(GetForegroundWindow(), sameScreenAs) is var f && f.Full ? f.Window : IntPtr.Zero;
+
+    static (bool Full, IntPtr Window) IsFullScreen(IntPtr front, IntPtr sameScreenAs) => (FillsScreen(front, sameScreenAs), front);
+
+    static bool FillsScreen(IntPtr front, IntPtr sameScreenAs)
     {
-        IntPtr front = GetForegroundWindow();
         if (front == IntPtr.Zero) return false;
         var cls = new System.Text.StringBuilder(64);
         GetClassNameW(front, cls, 64);
@@ -98,8 +104,27 @@ public sealed class ConnectPopup : Window
         // Exactly the screen's size. An ordinary maximised window is a few pixels larger on every side (its hidden
         // border), which is how it is told apart, including on a PC whose taskbar auto-hides.
         var m = info.Monitor;
-        return w.Left == m.Left && w.Top == m.Top && w.Right == m.Right && w.Bottom == m.Bottom;
+        if (w.Left != m.Left || w.Top != m.Top || w.Right != m.Right || w.Bottom != m.Bottom) return false;
+        // Start, Search, the notification centre and the lock screen also use a window the size of the screen,
+        // mostly see-through, and its class name differs between Windows versions. Whatever it is called, a
+        // window that belongs to Windows' own shell is not an app covering the screen.
+        GetWindowThreadProcessId(front, out uint pid);
+        try
+        {
+            using var owner = System.Diagnostics.Process.GetProcessById((int)pid);
+            if (ShellProcesses.Contains(owner.ProcessName)) return false;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+        return true;
     }
+
+    static readonly HashSet<string> ShellProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer", "StartMenuExperienceHost", "SearchHost", "SearchApp", "ShellExperienceHost", "ShellHost",
+        "LockApp", "LogonUI", "TextInputHost", "ScreenClippingHost", "SystemSettingsBroker",
+    };
+
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
     const double Headroom = 140; // how much of the window sits above the top of the screen
     const double Travel = 96;   // how far above its resting place the pill starts and ends
