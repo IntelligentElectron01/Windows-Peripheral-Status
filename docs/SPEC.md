@@ -1,7 +1,6 @@
 # BT Battery Indicator — Spec
 
 Free, local Windows 10 (1809+) / 11 tray app showing battery levels of paired Bluetooth devices.
-Functional clean-room recreation; original name, icon, and code.
 
 Status key: `TODO` not built · `BUILT` coded, not verified · `AUTO` passes automated test (`.\build.ps1`) · `PASS` also verified by hand on real hardware · `FAIL`
 
