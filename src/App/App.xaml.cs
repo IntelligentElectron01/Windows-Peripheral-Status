@@ -79,6 +79,10 @@ public partial class App : Application
         _trim.Tick += (_, _) => { _trim.Stop(); TrimMemory(); };
         _flyout.Closed_ += ScheduleTrim;
         ConnectPopup.AllClosed += ScheduleTrim;
+        // The regular device scans slowly pull memory back in, so repeat the clean-up every ten minutes
+        // while no window of the app is open.
+        _tidy.Tick += (_, _) => { if (_flyout is { IsVisible: false } && _historyWindows.Count == 0) TrimMemory(); };
+        _tidy.Start();
         ScheduleTrim();
 
         CreateStrip();
@@ -177,6 +181,7 @@ public partial class App : Application
     // ---- memory: after the UI has been used, hand unused RAM back to Windows -------------------
 
     readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(12) };
+    readonly DispatcherTimer _tidy = new() { Interval = TimeSpan.FromMinutes(10) };
 
     void ScheduleTrim() { _trim.Stop(); _trim.Start(); }
 
