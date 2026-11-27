@@ -42,10 +42,12 @@ Popup when a device connects:
 ![Connect popup for earbuds](docs/screenshots/popup-earbuds.png)
 ![Connect popup for a keyboard](docs/screenshots/popup-keyboard.png)
 
-Low battery, and switching the sound output:
+Low battery, and a change of sound output or microphone (shown however it was changed):
 
 ![Low-battery popup](docs/screenshots/popup-low.png)
 ![Sound output popup](docs/screenshots/popup-output.png)
+![Laptop speakers popup](docs/screenshots/popup-laptop.png)
+![Microphone popup](docs/screenshots/popup-input.png)
 
 ## Install (one command)
 

@@ -100,7 +100,25 @@ public partial class App : Application
             _tray.ShowAlert(a);
         };
         _c.DeviceConnected += d => ConnectPopup.Announce(_c, d);
-        _c.OutputSwitched += d => ConnectPopup.Announce(_c, d, PopupKind.Output);
+        // A pill for every change of sound output or microphone, however it was changed (the strip, Windows' own
+        // sound menu, a device connecting or leaving). Windows reports the change; nothing is polled.
+        if (!demo)
+        {
+            _outputPause.Tick += async (_, _) => { _outputPause.Stop(); await AnnounceSoundAsync(false); };
+            _inputPause.Tick += async (_, _) => { _inputPause.Stop(); await AnnounceSoundAsync(true); };
+            Task.Run(() =>
+            {
+                _lastOutput = BluetoothConnector.CurrentOutput();
+                _lastInput = BluetoothConnector.CurrentInput();
+                // Windows reports one change several times over; wait for it to settle, then look once.
+                bool watching = BluetoothConnector.WatchOutput(input => Dispatcher.BeginInvoke(() =>
+                {
+                    var pause = input ? _inputPause : _outputPause;
+                    pause.Stop(); pause.Start();
+                }));
+                if (!watching) Dispatcher.BeginInvoke(() => _c.OutputSwitched += d => ConnectPopup.Announce(_c, d, PopupKind.Output));
+            });
+        }
         if (demo && args.Contains("--popup-test"))
         {
             // Developer helper: disconnect and reconnect two made-up devices so the popup can be watched, then show
@@ -167,6 +185,43 @@ public partial class App : Application
             if (!_quitting) CreateStrip();
         };
     }
+
+    readonly DispatcherTimer _outputPause = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    readonly DispatcherTimer _inputPause = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    string? _lastOutput, _lastInput;
+
+    async Task AnnounceSoundAsync(bool input)
+    {
+        try
+        {
+            var now = await Task.Run(() => input ? BluetoothConnector.DescribeInput() : BluetoothConnector.DescribeOutput());
+            if (now is null || now.Id == (input ? _lastInput : _lastOutput)) return;
+            if (input) _lastInput = now.Id; else _lastOutput = now.Id;
+            var kind = input ? PopupKind.Input : PopupKind.Output;
+            if (await _c!.DeviceForOutputAsync(now.Id, input) is { } device) { ConnectPopup.Announce(_c, device, kind); return; }
+            ConnectPopup.Announce(_c, OutputAsDevice(now, HasBattery(), input), kind, OutputGlyph(now.Kind, HasBattery(), input));
+        }
+        catch (Exception e) { _c?.Log(e); }
+    }
+
+    static bool HasBattery() =>
+        (System.Windows.Forms.SystemInformation.PowerStatus.BatteryChargeStatus & System.Windows.Forms.BatteryChargeStatus.NoSystemBattery) == 0;
+
+    /// <summary>A sound output or microphone that is not one of the paired devices, in the shape the pill shows.</summary>
+    internal static DeviceReading OutputAsDevice(BluetoothConnector.OutputInfo o, bool laptop, bool input = false) => new(
+        (input ? "IN:" : "OUT:") + o.Id,
+        o.Kind == BluetoothConnector.OutputKind.BuiltIn ? (laptop ? "Laptop " : "PC ") + (input ? "microphone" : "speakers") : o.Name,
+        o.Kind is BluetoothConnector.OutputKind.Headphones or BluetoothConnector.OutputKind.Bluetooth ? DeviceKind.Headphones : DeviceKind.Speaker,
+        true, null);
+
+    internal static string? OutputGlyph(BluetoothConnector.OutputKind kind, bool laptop, bool input = false) => kind switch
+    {
+        BluetoothConnector.OutputKind.BuiltIn when laptop => ConnectPopup.LaptopGlyph,
+        BluetoothConnector.OutputKind.Display => ConnectPopup.ScreenGlyph,
+        BluetoothConnector.OutputKind.Headphones or BluetoothConnector.OutputKind.Bluetooth => null,
+        _ when input => ConnectPopup.MicGlyph,
+        _ => null,
+    };
 
     void ShowHistory(string id)
     {
@@ -279,6 +334,17 @@ public partial class App : Application
                     Save(pop, Path.Combine(dir, file));
                     pop.Close();
                 }
+                var own = new BluetoothConnector.OutputInfo("demo", "Speakers", BluetoothConnector.OutputKind.BuiltIn);
+                var laptop = ConnectPopup.Still(c, OutputAsDevice(own, true), PopupKind.Output, OutputGlyph(own.Kind, true));
+                laptop.Show();
+                await Idle();
+                Save(laptop, Path.Combine(dir, "popup-laptop.png"));
+                laptop.Close();
+                var mic = ConnectPopup.Still(c, OutputAsDevice(own, true, true), PopupKind.Input, OutputGlyph(own.Kind, true, true));
+                mic.Show();
+                await Idle();
+                Save(mic, Path.Combine(dir, "popup-input.png"));
+                mic.Close();
             }
 
             // Tray icons at 2x so they can be inspected.

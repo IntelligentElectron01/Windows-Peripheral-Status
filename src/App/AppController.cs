@@ -225,6 +225,13 @@ public sealed class AppController
         catch (Exception e) { Log(e); return false; }
     }
 
+    /// <summary>The paired device a Windows sound output belongs to, or null when it is not one of them (PC speakers, a screen).</summary>
+    public Task<DeviceReading?> DeviceForOutputAsync(string endpointId, bool input = false)
+    {
+        var known = Devices.ToList();
+        return Task.Run(() => known.FirstOrDefault(d => (input ? BluetoothConnector.InputOf(d.Id) : BluetoothConnector.OutputOf(d.Id)) == endpointId));
+    }
+
     public Task<bool> CanSwitchAsync(string id) =>
         id.StartsWith("LOGI", StringComparison.Ordinal) ? Task.FromResult(false) : Task.Run(() => BluetoothConnector.AudioLinks(id).Count > 0);
 

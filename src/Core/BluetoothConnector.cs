@@ -144,14 +144,19 @@ public static class BluetoothConnector
     // ---- sound output ------------------------------------------------------------------------------------
 
     /// <summary>The identifier of this device's working sound output (the music one when there are two), or null.</summary>
-    public static string? OutputOf(string address)
+    public static string? OutputOf(string address) => EndpointOf(address, 0);
+
+    /// <summary>The identifier of this device's working microphone, or null.</summary>
+    public static string? InputOf(string address) => EndpointOf(address, 1);
+
+    static string? EndpointOf(string address, int flow)
     {
         if (address.Length != 12 || !address.All(Uri.IsHexDigit)) return null;
         try
         {
             var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
             var known = Mine(address, Scan(enumerator, 2, 0xF)).Select(e => e.Link).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var outputs = Scan(enumerator, 0 /* outputs */, 1 /* working */).Where(e => known.Contains(e.Link))
+            var outputs = Scan(enumerator, flow, 1 /* working */).Where(e => known.Contains(e.Link))
                 .OrderByDescending(e => e.Link.Contains(address, StringComparison.OrdinalIgnoreCase));
             foreach (var e in outputs)
                 if (e.Endpoint.GetId(out string? id) >= 0 && !string.IsNullOrEmpty(id)) return id;
@@ -161,12 +166,17 @@ public static class BluetoothConnector
     }
 
     /// <summary>The identifier of the output Windows currently plays sound through, or null.</summary>
-    public static string? CurrentOutput()
+    public static string? CurrentOutput() => Current(0);
+
+    /// <summary>The identifier of the microphone Windows currently listens through, or null.</summary>
+    public static string? CurrentInput() => Current(1);
+
+    static string? Current(int flow)
     {
         try
         {
             var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
-            return enumerator.GetDefaultAudioEndpoint(0, 1 /* music and video */, out var device) >= 0 && device is not null
+            return enumerator.GetDefaultAudioEndpoint(flow, 1 /* music and video */, out var device) >= 0 && device is not null
                    && device.GetId(out string? id) >= 0 ? id : null;
         }
         catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException) { return null; }
@@ -187,6 +197,121 @@ public static class BluetoothConnector
             return ok;
         }
         catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or NotSupportedException) { return false; }
+    }
+
+    /// <summary>What sort of thing Windows is playing sound through.</summary>
+    public enum OutputKind { Speakers, BuiltIn, Headphones, Display, Bluetooth }
+
+    /// <summary>The output Windows is playing through: its identifier, the name Windows shows for it, and its sort.</summary>
+    public sealed record OutputInfo(string Id, string Name, OutputKind Kind);
+
+    /// <summary>Describes the output Windows currently plays sound through. Reads only; null when there is none.</summary>
+    public static OutputInfo? DescribeOutput() => DescribeDefault(false);
+
+    /// <summary>The same for the microphone Windows currently listens through.</summary>
+    public static OutputInfo? DescribeInput() => DescribeDefault(true);
+
+    static OutputInfo? DescribeDefault(bool input)
+    {
+        try
+        {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            if (enumerator.GetDefaultAudioEndpoint(input ? 1 : 0, 1 /* music and video */, out var device) < 0 || device is null) return null;
+            if (device.GetId(out string? id) < 0 || string.IsNullOrEmpty(id)) return null;
+            string name = "Sound output";
+            uint form = 10 /* unknown */;
+            if (device.OpenPropertyStore(0 /* read */, out var store) >= 0 && store is not null)
+            {
+                var deviceSet = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0");
+                name = Text(store, deviceSet, 14 /* full name */) ?? Text(store, deviceSet, 2 /* short name */) ?? name;
+                form = Number(store, new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), 0 /* form factor */) ?? form;
+            }
+            bool bluetooth = (LinkOf(device) ?? "").Contains("bth", StringComparison.OrdinalIgnoreCase);
+            // Sound hardware that is part of the PC itself carries the PC's own "physical device" number.
+            bool partOfPc = ContainerOf(device) == new Guid("00000000-0000-0000-FFFF-FFFFFFFFFFFF");
+            return new OutputInfo(id, name, Classify(bluetooth, form, partOfPc, input));
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <param name="form">Windows' "form factor" number for the output (1 speakers, 3 headphones, 5 headset, 9 a screen's speakers).</param>
+    /// <param name="input">A microphone rather than an output (4 is then a plain microphone).</param>
+    public static OutputKind Classify(bool bluetooth, uint form, bool partOfPc, bool input = false) =>
+        bluetooth ? OutputKind.Bluetooth
+        : input ? (form == 5 ? OutputKind.Headphones : partOfPc && form == 4 ? OutputKind.BuiltIn : OutputKind.Speakers)
+        : form is 3 or 5 ? OutputKind.Headphones
+        : form == 9 ? OutputKind.Display
+        : partOfPc && form == 1 ? OutputKind.BuiltIn
+        : OutputKind.Speakers;
+
+    static IMMDeviceEnumerator? _watching;
+    static OutputListener? _listener;
+
+    /// <summary>
+    /// Asks Windows to say whenever the sound output or the microphone changes, however it was changed. Costs
+    /// nothing while nothing changes. The callback (true for the microphone) arrives on a Windows thread and
+    /// must return quickly.
+    /// </summary>
+    public static bool WatchOutput(Action<bool> changed)
+    {
+        try
+        {
+            if (_listener is not null) return true;
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            var listener = new OutputListener(changed);
+            if (enumerator.RegisterEndpointNotificationCallback(listener) < 0) return false;
+            _watching = enumerator; _listener = listener;   // kept so they are not cleaned up while Windows holds them
+            return true;
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or NotSupportedException) { return false; }
+    }
+
+    sealed class OutputListener(Action<bool> changed) : IMMNotificationClient
+    {
+        public int OnDeviceStateChanged(string id, int state) => 0;
+        public int OnDeviceAdded(string id) => 0;
+        public int OnDeviceRemoved(string id) => 0;
+        public int OnDefaultDeviceChanged(int flow, int role, string? id)
+        {
+            if (flow is 0 or 1 /* output or microphone */) { try { changed(flow == 1); } catch { /* never throw into Windows */ } }
+            return 0;
+        }
+        public int OnPropertyValueChanged(string id, PropertyKey key) => 0;
+    }
+
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0")]
+    interface IMMNotificationClient
+    {
+        [PreserveSig] int OnDeviceStateChanged([MarshalAs(UnmanagedType.LPWStr)] string id, int state);
+        [PreserveSig] int OnDeviceAdded([MarshalAs(UnmanagedType.LPWStr)] string id);
+        [PreserveSig] int OnDeviceRemoved([MarshalAs(UnmanagedType.LPWStr)] string id);
+        [PreserveSig] int OnDefaultDeviceChanged(int flow, int role, [MarshalAs(UnmanagedType.LPWStr)] string? id);
+        [PreserveSig] int OnPropertyValueChanged([MarshalAs(UnmanagedType.LPWStr)] string id, PropertyKey key);
+    }
+
+    static string? LinkOf(IMMDevice endpoint)
+    {
+        var topologyId = typeof(IDeviceTopology).GUID;
+        if (endpoint.Activate(ref topologyId, 23, IntPtr.Zero, out object obj) < 0 || obj is not IDeviceTopology topology) return null;
+        if (topology.GetConnectorCount(out uint connectors) < 0 || connectors == 0) return null;
+        if (topology.GetConnector(0, out var connector) < 0 || connector is null) return null;
+        return connector.GetDeviceIdConnectedTo(out string? id) < 0 ? null : id;
+    }
+
+    static string? Text(IPropertyStore store, Guid set, uint id)
+    {
+        var key = new PropertyKey { Set = set, Id = id };
+        if (store.GetValue(ref key, out var value) < 0) return null;
+        try { return value.Type == 31 /* text */ && value.Pointer != IntPtr.Zero ? Marshal.PtrToStringUni(value.Pointer) : null; }
+        finally { PropVariantClear(ref value); }
+    }
+
+    static uint? Number(IPropertyStore store, Guid set, uint id)
+    {
+        var key = new PropertyKey { Set = set, Id = id };
+        if (store.GetValue(ref key, out var value) < 0) return null;
+        try { return value.Type == 19 /* whole number */ ? (uint)(value.Pointer.ToInt64() & 0xFFFFFFFF) : null; }
+        finally { PropVariantClear(ref value); }
     }
 
     [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
@@ -263,6 +388,8 @@ public static class BluetoothConnector
         [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection? devices);
         [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice? device);
         [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice? device);
+        [PreserveSig] int RegisterEndpointNotificationCallback(IMMNotificationClient client);
+        [PreserveSig] int UnregisterEndpointNotificationCallback(IMMNotificationClient client);
     }
 
     [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E")]

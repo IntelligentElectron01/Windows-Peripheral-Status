@@ -84,6 +84,17 @@ if (args.Length > 0 && args[0] == "outputs")
     // Lists which paired devices have a working sound output and which one Windows is playing through. Changes nothing.
     string? playingNow = BluetoothConnector.CurrentOutput();
     Console.WriteLine($"current output known: {playingNow is not null}");
+    var described = BluetoothConnector.DescribeOutput();
+    Console.WriteLine($"current output: kind {described?.Kind}, name length {described?.Name.Length}, built-in or Bluetooth name shown: {(described?.Kind is BluetoothConnector.OutputKind.BuiltIn or BluetoothConnector.OutputKind.Speakers ? described.Name : "(not printed)")}");
+    var mic = BluetoothConnector.DescribeInput();
+    Console.WriteLine($"current input: kind {mic?.Kind}, known: {BluetoothConnector.CurrentInput() is not null}");
+    if (args.Length > 1 && args[1] == "watch")
+    {
+        // Waits 40 seconds and reports every change of sound output it is told about. Changes nothing itself.
+        Console.WriteLine($"watching: {BluetoothConnector.WatchOutput(input => Console.WriteLine($"changed -> {(input ? "input" : "output")} kind {(input ? BluetoothConnector.DescribeInput() : BluetoothConnector.DescribeOutput())?.Kind}"))}");
+        await Task.Delay(40000);
+        return 0;
+    }
     foreach (var d in new WindowsDeviceSource().Scan())
     {
         string? mine = BluetoothConnector.OutputOf(d.Id);
@@ -523,7 +534,12 @@ Section("Disconnect on request");
     Check(BluetoothConnector.Disconnect("000000000000", out _) == BluetoothConnector.Outcome.NotAnAudioDevice, "disconnect does nothing for an address with no audio link");
     Check(!BluetoothConnector.DropLink("not-an-address"), "closing a link refuses anything that is not a Bluetooth address");
     Check(BluetoothConnector.OutputOf("not-an-address") is null && BluetoothConnector.OutputOf("000000000000") is null, "an unknown device has no sound output to switch to");
-    Check(new Settings().QuietInFullScreen, "popups are held back in full-screen apps by default");
+    Check(BluetoothConnector.Classify(false, 1, true) == BluetoothConnector.OutputKind.BuiltIn, "the PC's own speakers are recognised as built in");
+Check(BluetoothConnector.Classify(false, 1, false) == BluetoothConnector.OutputKind.Speakers, "plugged-in speakers are not taken for the PC's own");
+Check(BluetoothConnector.Classify(true, 1, true) == BluetoothConnector.OutputKind.Bluetooth, "a Bluetooth output is never taken for the PC's own speakers");
+Check(BluetoothConnector.Classify(false, 3, true) == BluetoothConnector.OutputKind.Headphones && BluetoothConnector.Classify(false, 9, false) == BluetoothConnector.OutputKind.Display, "wired headphones and a screen's speakers are told apart");
+Check(BluetoothConnector.Classify(false, 4, true, input: true) == BluetoothConnector.OutputKind.BuiltIn && BluetoothConnector.Classify(false, 4, false, input: true) == BluetoothConnector.OutputKind.Speakers, "the PC's own microphone is told apart from a plugged-in one");
+Check(new Settings().QuietInFullScreen, "popups are held back in full-screen apps by default");
     Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("{\"QuietInFullScreen\":false}")!.QuietInFullScreen == false, "the full-screen setting is read back from the settings file");
 }
 

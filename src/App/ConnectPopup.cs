@@ -11,17 +11,21 @@ using BTBatteryIndicator.Core;
 namespace BTBatteryIndicator;
 
 /// <summary>What the pill is announcing.</summary>
-public enum PopupKind { Connected, LowBattery, Output }
+public enum PopupKind { Connected, LowBattery, Output, Input }
 
 /// <summary>
 /// A small dark pill that drops down from the top centre of the screen when a device connects, runs low, or
-/// becomes the sound output. It shows the name and battery for a few seconds, then slides back up. It never
+/// becomes the sound output or the microphone. It shows the name and battery for a few seconds, then slides back up. It never
 /// takes keyboard focus; a click dismisses it. The window exists only while it is on screen.
 /// </summary>
 public sealed class ConnectPopup : Window
 {
-    static readonly Queue<(DeviceReading Device, PopupKind Kind)> Waiting = new();
+    static readonly Queue<(DeviceReading Device, PopupKind Kind, string? Glyph)> Waiting = new();
     static ConnectPopup? _open;
+    static (string Id, DateTime At) _lastConnected;
+
+    /// <summary>Icons for sound outputs that are not Bluetooth devices.</summary>
+    public const string LaptopGlyph = "", ScreenGlyph = "", MicGlyph = "";
 
     /// <summary>Developer aid: receives one line of frame timing after each drop-down.</summary>
     internal static Action<string>? FrameReport;
@@ -33,16 +37,31 @@ public sealed class ConnectPopup : Window
     /// Shows the popup for this device, or queues it behind the one already showing.
     /// Returns false when it was held back because a full-screen app is in front.
     /// </summary>
-    public static bool Announce(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected)
+    /// <param name="glyph">An icon to use instead of the one for the device's kind (the laptop, for its own speakers).</param>
+    public static bool Announce(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected, string? glyph = null)
     {
         if (HeldBack(c.Settings)) return false;
+        // A device that has just connected usually becomes the sound output in the same moment. Its "Connected"
+        // pill already says what happened, so a second pill for the same device straight after is left out.
+        if (kind is PopupKind.Output or PopupKind.Input && ((_lastConnected.Id == d.Id && (DateTime.UtcNow - _lastConnected.At).TotalSeconds < 8)
+                                         || Waiting.Any(w => w.Device.Id == d.Id && w.Kind == PopupKind.Connected))) return true;
+        if (kind == PopupKind.Connected) _lastConnected = (d.Id, DateTime.UtcNow);
         if (_open is not null)
         {
             if ((_open._id != d.Id || _open._kind != kind) && !Waiting.Any(w => w.Device.Id == d.Id && w.Kind == kind))
-                Waiting.Enqueue((d, kind));
+            {
+                // Only the newest sound output (or microphone) is worth showing; older ones still waiting are dropped.
+                if (kind is PopupKind.Output or PopupKind.Input && Waiting.Any(w => w.Kind == kind))
+                {
+                    var keep = Waiting.Where(w => w.Kind != kind).ToList();
+                    Waiting.Clear();
+                    foreach (var w in keep) Waiting.Enqueue(w);
+                }
+                Waiting.Enqueue((d, kind, glyph));
+            }
             return true;
         }
-        _open = new ConnectPopup(c, d, kind);
+        _open = new ConnectPopup(c, d, kind, glyph);
         _open.Show();
         return true;
     }
@@ -95,13 +114,16 @@ public sealed class ConnectPopup : Window
     bool _entering, _leaving;
 
     /// <summary>The pill at rest, with no motion or timer (used for automated screenshots).</summary>
-    internal static ConnectPopup Still(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected) => new(c, d, kind, still: true);
+    internal static ConnectPopup Still(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected, string? glyph = null) => new(c, d, kind, glyph, still: true);
 
-    ConnectPopup(AppController c, DeviceReading d, PopupKind kind, bool still = false)
+    readonly string? _glyph;
+
+    ConnectPopup(AppController c, DeviceReading d, PopupKind kind, string? glyph, bool still = false)
     {
         _c = c;
         _id = d.Id;
         _kind = kind;
+        _glyph = glyph;
         if (kind == PopupKind.LowBattery) _hold.Interval = TimeSpan.FromSeconds(4.5);
         Title = "BT Battery Indicator popup";
         WindowStyle = WindowStyle.None;
@@ -164,7 +186,7 @@ public sealed class ConnectPopup : Window
             _hold.Stop();
             _c.Updated -= Refresh;
             _open = null;
-            if (Waiting.TryDequeue(out var next)) Announce(_c, next.Device, next.Kind);
+            if (Waiting.TryDequeue(out var next)) Announce(_c, next.Device, next.Kind, next.Glyph);
             if (_open is null) AllClosed?.Invoke();
         };
     }
@@ -196,7 +218,7 @@ public sealed class ConnectPopup : Window
             ? PodIcons.Element(PodIcons.For(pods.View == PodView.Separate ? PodView.Pair : pods.View), fg, 25)
             : new TextBlock
             {
-                Text = FlyoutWindow.GlyphFor(d.Kind), FontFamily = (FontFamily)Application.Current.Resources["Icons"],
+                Text = _glyph ?? FlyoutWindow.GlyphFor(d.Kind), FontFamily = (FontFamily)Application.Current.Resources["Icons"],
                 FontSize = 23, Foreground = fg,
             };
         icon.VerticalAlignment = VerticalAlignment.Center;
@@ -204,7 +226,8 @@ public sealed class ConnectPopup : Window
         var (status, statusColour) = _kind switch
         {
             PopupKind.LowBattery => ("Battery low", Color.FromRgb(0xFF, 0x45, 0x3A)),
-            PopupKind.Output => ("Sound output", Color.FromRgb(0x64, 0xD2, 0xFF)),
+            PopupKind.Output => ("Output set", Color.FromRgb(0x64, 0xD2, 0xFF)),
+            PopupKind.Input => ("Input set", Color.FromRgb(0x64, 0xD2, 0xFF)),
             _ => ("Connected", Color.FromRgb(0x30, 0xD1, 0x58)),
         };
         var text = new StackPanel { Margin = new Thickness(13, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center };
