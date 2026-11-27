@@ -8,8 +8,10 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - Battery level for Logitech wireless mice and keyboards on a Lightspeed, Unifying or Bolt USB receiver
 - Pin devices to show them in a strip on the taskbar with a battery gauge and percentage, or as numbered tray icons if you prefer (yellow under 50%, red under 20%)
 - Hover any tray icon to see every connected device
-- Low-battery notification at a level you choose (10–50%), and an optional notification when a pinned device disconnects
-- A small popup that drops down from the top of the screen when a Bluetooth device connects, showing its battery (can be switched off)
+- Low-battery warning at a level you choose (10–50%), shown as a small popup that drops down from the top of the screen
+- The same popup when a Bluetooth device connects, showing its battery (can be switched off); popups can stay out of the way of full-screen apps
+- An optional notification when a pinned device disconnects
+- With two or more Bluetooth audio devices connected, click one on the taskbar strip to move the sound to it
 - Connect or disconnect Bluetooth headphones, earbuds and speakers from the device menu (they stay paired)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
@@ -40,6 +42,11 @@ Popup when a device connects:
 ![Connect popup for earbuds](docs/screenshots/popup-earbuds.png)
 ![Connect popup for a keyboard](docs/screenshots/popup-keyboard.png)
 
+Low battery, and switching the sound output:
+
+![Low-battery popup](docs/screenshots/popup-low.png)
+![Sound output popup](docs/screenshots/popup-output.png)
+
 ## Install (one command)
 
 Unzip `BTBatteryIndicator-win-x64.zip`, click the File Explorer address bar in that folder, type `powershell`, press Enter, then run:
@@ -63,6 +70,7 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 - **Left-click** the tray icon: open the panel. **Right-click**: refresh or exit.
 - **Pin** button on a row: that device appears on the taskbar and moves with it when the taskbar auto-hides.
 - **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
+- **Click a connected headphone, earbud or speaker** on the strip while another one is connected too: Windows plays sound through the one you clicked.
 - **Click a row** or the **…** button: battery history, rename, hide.
 - **Gear** button: low-battery notification level, accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
 

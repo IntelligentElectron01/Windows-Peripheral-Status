@@ -10,51 +10,88 @@ using BTBatteryIndicator.Core;
 
 namespace BTBatteryIndicator;
 
+/// <summary>What the pill is announcing.</summary>
+public enum PopupKind { Connected, LowBattery, Output }
+
 /// <summary>
-/// A small dark pill that drops down from the top centre of the screen when a device connects, shows its name
-/// and battery for a few seconds, then slides back up. It never takes keyboard focus; a click dismisses it.
-/// The window exists only while it is on screen.
+/// A small dark pill that drops down from the top centre of the screen when a device connects, runs low, or
+/// becomes the sound output. It shows the name and battery for a few seconds, then slides back up. It never
+/// takes keyboard focus; a click dismisses it. The window exists only while it is on screen.
 /// </summary>
 public sealed class ConnectPopup : Window
 {
-    static readonly Queue<DeviceReading> Waiting = new();
+    static readonly Queue<(DeviceReading Device, PopupKind Kind)> Waiting = new();
     static ConnectPopup? _open;
 
-    /// <summary>Shows the popup for this device, or queues it behind the one already showing.</summary>
-    public static void Announce(AppController c, DeviceReading d)
+    /// <summary>Developer aid: receives one line of frame timing after each drop-down.</summary>
+    internal static Action<string>? FrameReport;
+
+    /// <summary>Raised when the last popup has gone, so the app can hand the memory it used back to Windows.</summary>
+    public static event Action? AllClosed;
+
+    /// <summary>
+    /// Shows the popup for this device, or queues it behind the one already showing.
+    /// Returns false when it was held back because a full-screen app is in front.
+    /// </summary>
+    public static bool Announce(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected)
     {
-        // Stay out of the way of exclusive full-screen games and presentations. (Windows also reports a looser
-        // "busy" state, but that is set by ordinary maximised or borderless windows, so it is not used here.)
-        if (SHQueryUserNotificationState(out int state) == 0 && state is 3 or 4) return;
+        if (HeldBack(c.Settings)) return false;
         if (_open is not null)
         {
-            if (_open._id != d.Id && Waiting.All(w => w.Id != d.Id)) Waiting.Enqueue(d);
-            return;
+            if ((_open._id != d.Id || _open._kind != kind) && !Waiting.Any(w => w.Device.Id == d.Id && w.Kind == kind))
+                Waiting.Enqueue((d, kind));
+            return true;
         }
-        _open = new ConnectPopup(c, d);
+        _open = new ConnectPopup(c, d, kind);
         _open.Show();
+        return true;
     }
 
+    /// <summary>
+    /// Exclusive full-screen games and presentations are never drawn over. With the setting on, the same goes for
+    /// any app whose window fills the whole screen (borderless games, full-screen video).
+    /// </summary>
+    static bool HeldBack(Settings s)
+    {
+        if (SHQueryUserNotificationState(out int state) == 0 && state is 3 or 4) return true;
+        if (!s.QuietInFullScreen) return false;
+        IntPtr front = GetForegroundWindow();
+        if (front == IntPtr.Zero) return false;
+        var cls = new System.Text.StringBuilder(64);
+        GetClassNameW(front, cls, 64);
+        if (cls.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;   // the desktop itself
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetWindowRect(front, out var w) || !GetMonitorInfoW(MonitorFromWindow(front, 2), ref info)) return false;
+        // Exactly the screen's size. An ordinary maximised window is a few pixels larger on every side (its hidden
+        // border), which is how it is told apart, including on a PC whose taskbar auto-hides.
+        var m = info.Monitor;
+        return w.Left == m.Left && w.Top == m.Top && w.Right == m.Right && w.Bottom == m.Bottom;
+    }
+
+    const double Headroom = 140; // how much of the window sits above the top of the screen
     const double Travel = 96;   // how far above its resting place the pill starts and ends
 
     readonly AppController _c;
     readonly string _id;
+    readonly PopupKind _kind;
     readonly Border _pill;
     readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
     readonly TranslateTransform _move = new(0, -Travel);
     readonly ScaleTransform _scale = new(0.82, 0.82);
     readonly DispatcherTimer _hold = new() { Interval = TimeSpan.FromSeconds(3.2) };
     string _shown = "";
-    bool _leaving;
+    bool _entering, _leaving;
 
     /// <summary>The pill at rest, with no motion or timer (used for automated screenshots).</summary>
-    internal static ConnectPopup Still(AppController c, DeviceReading d) => new(c, d, still: true);
+    internal static ConnectPopup Still(AppController c, DeviceReading d, PopupKind kind = PopupKind.Connected) => new(c, d, kind, still: true);
 
-    ConnectPopup(AppController c, DeviceReading d, bool still = false)
+    ConnectPopup(AppController c, DeviceReading d, PopupKind kind, bool still = false)
     {
         _c = c;
         _id = d.Id;
-        Title = "BT Battery Indicator connected";
+        _kind = kind;
+        if (kind == PopupKind.LowBattery) _hold.Interval = TimeSpan.FromSeconds(4.5);
+        Title = "BT Battery Indicator popup";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -80,10 +117,10 @@ public sealed class ConnectPopup : Window
             Padding = new Thickness(18, 0, 20, 0),
             Height = 54,
             MinWidth = 220,
-            // Room below for the little overshoot at the end of the drop.
-            Margin = new Thickness(12, 10, 12, 18),
+            // Room above for the whole climb, so the pill is cut off by the edge of the screen and never by the
+            // edge of its own window (which costs frames), and room below for the little overshoot of the drop.
+            Margin = new Thickness(12, 10 + Headroom, 12, 18),
             Child = _row,
-            Opacity = 0,
             RenderTransformOrigin = new Point(0.5, 0),
             RenderTransform = new TransformGroup { Children = { _scale, _move } },
         };
@@ -97,9 +134,16 @@ public sealed class ConnectPopup : Window
             long ex = GetWindowLongPtrW(hwnd, -20).ToInt64();
             SetWindowLongPtrW(hwnd, -20, new IntPtr(ex | 0x08000000L /* NOACTIVATE */ | 0x00000080L /* TOOLWINDOW */));
         };
-        if (still) { _move.Y = 0; _scale.ScaleX = _scale.ScaleY = 1; _pill.Opacity = 1; return; }
+        if (still) { _pill.Margin = new Thickness(12, 10, 12, 18); _move.Y = 0; _scale.ScaleX = _scale.ScaleY = 1; return; }
         SizeChanged += (_, _) => Centre();
-        Loaded += (_, _) => { Centre(); Enter(); };
+        Loaded += (_, _) =>
+        {
+            Centre();
+            // The pill is drawn once into a picture, and the motion then only moves and scales that picture.
+            // Re-drawing text and shapes on every frame is what makes a slide look uneven.
+            _pill.CacheMode = new BitmapCache { RenderAtScale = VisualTreeHelper.GetDpi(this).DpiScaleX, SnapsToDevicePixels = true };
+            Dispatcher.BeginInvoke(Enter, DispatcherPriority.ContextIdle);
+        };
         MouseLeftButtonUp += (_, _) => Leave();
         _hold.Tick += (_, _) => Leave();
         _c.Updated += Refresh;
@@ -108,7 +152,8 @@ public sealed class ConnectPopup : Window
             _hold.Stop();
             _c.Updated -= Refresh;
             _open = null;
-            if (Waiting.TryDequeue(out var next)) Announce(_c, next);
+            if (Waiting.TryDequeue(out var next)) Announce(_c, next.Device, next.Kind);
+            if (_open is null) AllClosed?.Invoke();
         };
     }
 
@@ -116,13 +161,14 @@ public sealed class ConnectPopup : Window
     {
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - ActualWidth) / 2;
-        Top = area.Top;
+        Top = area.Top - Headroom;
     }
 
     /// <summary>Battery levels often arrive a few seconds after the connection (earbuds especially), so keep the pill current.</summary>
     void Refresh()
     {
-        if (!_leaving && _c.Devices.FirstOrDefault(x => x.Id == _id) is { Connected: true } d) Fill(d);
+        // Not while the pill is moving: rebuilding its contents mid-slide would cost a frame.
+        if (!_leaving && !_entering && _c.Devices.FirstOrDefault(x => x.Id == _id) is { Connected: true } d) Fill(d);
     }
 
     void Fill(DeviceReading d)
@@ -143,6 +189,12 @@ public sealed class ConnectPopup : Window
             };
         icon.VerticalAlignment = VerticalAlignment.Center;
 
+        var (status, statusColour) = _kind switch
+        {
+            PopupKind.LowBattery => ("Battery low", Color.FromRgb(0xFF, 0x45, 0x3A)),
+            PopupKind.Output => ("Sound output", Color.FromRgb(0x64, 0xD2, 0xFF)),
+            _ => ("Connected", Color.FromRgb(0x30, 0xD1, 0x58)),
+        };
         var text = new StackPanel { Margin = new Thickness(13, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock
         {
@@ -151,8 +203,8 @@ public sealed class ConnectPopup : Window
         });
         text.Children.Add(new TextBlock
         {
-            Text = "Connected", FontSize = 11.5, Margin = new Thickness(0, 1, 0, 0),
-            Foreground = Theme.Brush(Color.FromRgb(0x30, 0xD1, 0x58)),
+            Text = status, FontSize = 11.5, Margin = new Thickness(0, 1, 0, 0),
+            Foreground = Theme.Brush(statusColour),
         });
 
         var levels = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(26, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -183,12 +235,46 @@ public sealed class ConnectPopup : Window
 
     void Enter()
     {
-        var drop = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.55 };
-        Animate(_move, TranslateTransform.YProperty, 0, 560, drop);
-        Animate(_scale, ScaleTransform.ScaleXProperty, 1, 560, drop);
-        Animate(_scale, ScaleTransform.ScaleYProperty, 1, 560, drop);
-        Animate(_pill, OpacityProperty, 1, 160, null);
+        _entering = true;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var frames = new List<double>();
+        EventHandler tick = (_, _) => frames.Add(clock.Elapsed.TotalMilliseconds);
+        if (FrameReport is not null) CompositionTarget.Rendering += tick;
+
+        Drop(_scale, ScaleTransform.ScaleXProperty, 0.82, 0.82, 1, null);
+        Drop(_scale, ScaleTransform.ScaleYProperty, 0.82, 0.82, 1, null);
+        Drop(_move, TranslateTransform.YProperty, -Travel - 30, -Travel, 0, () =>
+        {
+            _entering = false;
+            Refresh();
+            if (FrameReport is null) return;
+            CompositionTarget.Rendering -= tick;
+            var gaps = frames.Zip(frames.Skip(1), (a, b) => (At: a, Gap: b - a)).Where(g => g.Gap > 0.5 && g.At >= LeadIn).ToList();
+            string slow = string.Join(" ", gaps.Where(g => g.Gap > 11).Select(g => $"{g.Gap:0}@{g.At - LeadIn:0}"));
+            FrameReport($"drop-down: {gaps.Count} frames in {clock.Elapsed.TotalMilliseconds - LeadIn:0} ms, target {Rate} per second, " +
+                        $"slow frames (ms@when): {(slow.Length > 0 ? slow : "none")}");
+        });
         _hold.Start();
+    }
+
+    const int LeadIn = 180;   // milliseconds of unseen movement before the visible drop
+
+    /// <summary>
+    /// The drop as one continuous movement with an unseen lead-in. The first frames of any new movement come
+    /// slowly, while the drawing clock gets up to speed, and the start of the drop is its fastest part, where a
+    /// slow frame shows most. So the pill first creeps for a moment above the top edge of its window, out of
+    /// sight, and the visible drop begins with the clock already at full speed.
+    /// </summary>
+    static void Drop(Animatable target, DependencyProperty property, double leadFrom, double from, double to, Action? done)
+    {
+        var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(LeadIn + 560) };
+        a.KeyFrames.Add(new DiscreteDoubleKeyFrame(leadFrom, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(LeadIn))));
+        a.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(LeadIn + 560)),
+            new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.55 }));
+        Timeline.SetDesiredFrameRate(a, Rate);
+        if (done is not null) a.Completed += (_, _) => done();
+        target.BeginAnimation(property, a);
     }
 
     void Leave()
@@ -206,7 +292,7 @@ public sealed class ConnectPopup : Window
     static void Animate(Animatable target, DependencyProperty property, double to, int ms, IEasingFunction? ease, int beginMs = 0, Action? done = null)
     {
         var a = new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(beginMs) };
-        Timeline.SetDesiredFrameRate(a, 60);
+        Timeline.SetDesiredFrameRate(a, Rate);
         if (done is not null) a.Completed += (_, _) => done();
         target.BeginAnimation(property, a);
     }
@@ -214,10 +300,32 @@ public sealed class ConnectPopup : Window
     static void Animate(UIElement target, DependencyProperty property, double to, int ms, IEasingFunction? ease, int beginMs = 0)
     {
         var a = new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(beginMs) };
-        Timeline.SetDesiredFrameRate(a, 60);
+        Timeline.SetDesiredFrameRate(a, Rate);
         target.BeginAnimation(property, a);
     }
 
+    /// <summary>Frames per second to draw the motion at: the screen's own refresh rate, so every screen refresh gets a new frame.</summary>
+    static int Rate => _rate ??= ScreenRate();
+    static int? _rate;
+
+    static int ScreenRate()
+    {
+        IntPtr dc = GetDC(IntPtr.Zero);
+        try { int hz = GetDeviceCaps(dc, 116 /* vertical refresh */); return hz is >= 50 and <= 360 ? hz : 60; }
+        finally { ReleaseDC(IntPtr.Zero, dc); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern int GetDeviceCaps(IntPtr dc, int index);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr hwnd, System.Text.StringBuilder text, int max);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
     [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);

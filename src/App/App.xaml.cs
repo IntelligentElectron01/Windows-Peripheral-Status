@@ -26,7 +26,6 @@ public partial class App : Application
         // The UI is a few rows of text; drawing it on the CPU avoids holding graphics-card memory for a tray app.
         RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         var args = e.Args.Select(a => a.ToLowerInvariant()).ToList();
-
         // Developer helpers (no effect on normal use).
         int iconArg = args.IndexOf("--make-icon");
         if (iconArg >= 0 && e.Args.Length > iconArg + 1)
@@ -79,6 +78,7 @@ public partial class App : Application
         _flyout = new FlyoutWindow(_c);
         _trim.Tick += (_, _) => { _trim.Stop(); TrimMemory(); };
         _flyout.Closed_ += ScheduleTrim;
+        ConnectPopup.AllClosed += ScheduleTrim;
         ScheduleTrim();
 
         CreateStrip();
@@ -87,11 +87,21 @@ public partial class App : Application
         _flyout.ExitRequested += Quit;
         _flyout.HistoryRequested += ShowHistory;
         _flyout.RenameRequested += id => new RenameWindow(_c, id).Show();
-        _c.AlertRaised += a => _tray.ShowAlert(a);
+        _c.AlertRaised += a =>
+        {
+            // Low battery drops down as a pill. If a full-screen app is in front it goes to Windows' own
+            // notifications instead, so the warning is kept for later rather than lost.
+            if (a.Kind == AlertKind.LowBattery && _c.Devices.FirstOrDefault(d => d.Id == a.DeviceId) is { } low
+                && ConnectPopup.Announce(_c, low, PopupKind.LowBattery)) return;
+            _tray.ShowAlert(a);
+        };
         _c.DeviceConnected += d => ConnectPopup.Announce(_c, d);
+        _c.OutputSwitched += d => ConnectPopup.Announce(_c, d, PopupKind.Output);
         if (demo && args.Contains("--popup-test"))
         {
-            // Developer helper: disconnect and reconnect two made-up devices so the connect popup can be watched.
+            // Developer helper: disconnect and reconnect two made-up devices so the popup can be watched, then show
+            // the other two kinds. Frame timing of each drop-down is written next to the demo settings.
+            ConnectPopup.FrameReport = line => File.AppendAllText(Path.Combine(dataDir, "frames.txt"), line + Environment.NewLine);
             Dispatcher.BeginInvoke(async () =>
             {
                 string[] ids = ["DEMO00000005", "DEMO00000003"];
@@ -101,6 +111,8 @@ public partial class App : Application
                 await Task.Delay(1500);
                 foreach (var id in ids) _c.Demo!.ToggleConnected(id);
                 await _c.RefreshAsync();
+                ConnectPopup.Announce(_c, _c.Devices.First(d => d.Id == "DEMO00000003"), PopupKind.LowBattery);
+                ConnectPopup.Announce(_c, _c.Devices.First(d => d.Id == "DEMO00000005"), PopupKind.Output);
             });
         }
 
@@ -136,11 +148,13 @@ public partial class App : Application
     void CreateStrip()
     {
         _strip = new TaskbarStrip(_c!);
-        // Clicking a pinned device that is not connected tries to connect it; anything else opens the flyout.
-        // Devices that cannot be connected on request (mice, keyboards, controllers) open the flyout like any other click.
+        // Clicking a pinned device that is not connected tries to connect it. Clicking a connected audio device
+        // while another one is connected too moves the sound to it. Anything else opens the flyout, including
+        // devices that cannot be connected on request (mice, keyboards, controllers).
         _strip.Clicked += async id =>
         {
-            if (id is null || !_c!.NeedsConnect(id) || !await _c.TryConnectAsync(id)) _flyout?.Toggle();
+            bool handled = id is not null && (_c!.NeedsConnect(id) ? await _c.TryConnectAsync(id) : await _c.TrySwitchOutputAsync(id));
+            if (!handled) _flyout?.Toggle();
         };
         _strip.Closed += async (_, _) =>
         {
@@ -248,9 +262,13 @@ public partial class App : Application
 
             if (dark)
             {
-                foreach (var (id, file) in new[] { ("DEMO00000005", "popup-earbuds.png"), ("DEMO00000001", "popup-keyboard.png") })
+                foreach (var (id, file, kind) in new[]
                 {
-                    var pop = ConnectPopup.Still(c, c.Devices.First(d => d.Id == id));
+                    ("DEMO00000005", "popup-earbuds.png", PopupKind.Connected), ("DEMO00000001", "popup-keyboard.png", PopupKind.Connected),
+                    ("DEMO00000003", "popup-low.png", PopupKind.LowBattery), ("DEMO00000005", "popup-output.png", PopupKind.Output),
+                })
+                {
+                    var pop = ConnectPopup.Still(c, c.Devices.First(d => d.Id == id), kind);
                     pop.Show();
                     await Idle();
                     Save(pop, Path.Combine(dir, file));

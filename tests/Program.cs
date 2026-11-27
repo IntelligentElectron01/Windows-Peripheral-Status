@@ -67,13 +67,27 @@ if (args.Length > 1 && args[0] == "switch")
     string detail;
     var outcome = off ? BluetoothConnector.Disconnect(target.Id, out detail) : BluetoothConnector.Connect(target.Id, out detail);
     Console.WriteLine($"{(off ? "disconnect" : "connect")}: {outcome} | {detail}");
-    for (int i = 1; i <= 15; i++)
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    bool? last = null;
+    while (clock.Elapsed.TotalSeconds < 15)
     {
-        await Task.Delay(1000);
-        var now = new WindowsDeviceSource().Scan().FirstOrDefault(d => d.Id == target.Id);
-        var nodes = WindowsDeviceSource.ReadNodes().Where(n => n.Address == target.Id && n.Connected is not null)
-                                       .Select(n => $"{Short(Regex.Replace(n.InstanceId, "[0-9A-Fa-f]{12}", "…"))}={n.Connected}");
-        Console.WriteLine($"{i,2}s connected={now?.Connected} | {string.Join(" ", nodes)}");
+        await Task.Delay(200);
+        bool? now = new WindowsDeviceSource().Scan().FirstOrDefault(d => d.Id == target.Id)?.Connected;
+        if (now != last) Console.WriteLine($"{clock.Elapsed.TotalSeconds:0.0}s connected={now}");
+        last = now;
+    }
+    return 0;
+}
+
+if (args.Length > 0 && args[0] == "outputs")
+{
+    // Lists which paired devices have a working sound output and which one Windows is playing through. Changes nothing.
+    string? playingNow = BluetoothConnector.CurrentOutput();
+    Console.WriteLine($"current output known: {playingNow is not null}");
+    foreach (var d in new WindowsDeviceSource().Scan())
+    {
+        string? mine = BluetoothConnector.OutputOf(d.Id);
+        Console.WriteLine($"outputs: {d.Kind} connected={d.Connected} has output={mine is not null} is current={mine is not null && mine == playingNow}");
     }
     return 0;
 }
@@ -507,6 +521,10 @@ Section("Disconnect on request");
     Check(eng.Evaluate([Hp(false)], ds).Any(a => a.Kind == AlertKind.Disconnected), "a later unexpected disconnect still notifies");
     Check(BluetoothConnector.Disconnect("not-an-address", out _) == BluetoothConnector.Outcome.NotAnAudioDevice, "disconnect refuses anything that is not a Bluetooth address");
     Check(BluetoothConnector.Disconnect("000000000000", out _) == BluetoothConnector.Outcome.NotAnAudioDevice, "disconnect does nothing for an address with no audio link");
+    Check(!BluetoothConnector.DropLink("not-an-address"), "closing a link refuses anything that is not a Bluetooth address");
+    Check(BluetoothConnector.OutputOf("not-an-address") is null && BluetoothConnector.OutputOf("000000000000") is null, "an unknown device has no sound output to switch to");
+    Check(new Settings().QuietInFullScreen, "popups are held back in full-screen apps by default");
+    Check(System.Text.Json.JsonSerializer.Deserialize<Settings>("{\"QuietInFullScreen\":false}")!.QuietInFullScreen == false, "the full-screen setting is read back from the settings file");
 }
 
 Section("Connect popup");

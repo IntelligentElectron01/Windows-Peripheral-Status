@@ -199,6 +199,34 @@ public sealed class AppController
     }
 
     /// <summary>True if Windows can connect or disconnect this device on request (Bluetooth audio devices only).</summary>
+    /// <summary>A device has just been made the sound output from the taskbar strip.</summary>
+    public event Action<DeviceReading>? OutputSwitched;
+
+    /// <summary>
+    /// When more than one Bluetooth audio device is connected, makes this one the sound output (only on the user's
+    /// click). Returns false when there was nothing to switch: one audio device, not an audio device, or already playing.
+    /// </summary>
+    public async Task<bool> TrySwitchOutputAsync(string id)
+    {
+        if (Devices.FirstOrDefault(d => d.Id == id) is not { Connected: true } device) return false;
+        var others = Devices.Where(d => d.Connected && d.Id != id).Select(d => d.Id).ToList();
+        if (others.Count == 0) return false;
+        try
+        {
+            bool? switched = await Task.Run<bool?>(() =>
+            {
+                if (BluetoothConnector.OutputOf(id) is not { } mine || mine == BluetoothConnector.CurrentOutput()) return null;
+                if (!others.Any(o => BluetoothConnector.OutputOf(o) is not null)) return null;
+                return BluetoothConnector.SetOutput(mine);
+            });
+            if (switched is null) return false;
+            if (switched == true) OutputSwitched?.Invoke(device);
+            else AlertRaised?.Invoke(new Alert(AlertKind.Info, id, $"Couldn't switch sound to {NameOf(device)}", "Pick it from the sound menu on the taskbar instead."));
+            return true;
+        }
+        catch (Exception e) { Log(e); return false; }
+    }
+
     public Task<bool> CanSwitchAsync(string id) =>
         id.StartsWith("LOGI", StringComparison.Ordinal) ? Task.FromResult(false) : Task.Run(() => BluetoothConnector.AudioLinks(id).Count > 0);
 
@@ -219,10 +247,11 @@ public sealed class AppController
             bool gone = false;
             if (outcome == BluetoothConnector.Outcome.Requested)
             {
-                // Windows takes about 5 to 7 seconds to report the link gone (measured on real earbuds), so allow 16.
-                for (int i = 0; i < 16; i++)
+                // Usually gone within a second. If the radio link could not be closed directly, Windows takes about
+                // 5 to 7 seconds by itself (measured on real earbuds), so keep checking for 16.
+                for (int i = 0; i < 26; i++)
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(i < 12 ? 350 : 1000);
                     await RefreshAsync();
                     if (Devices.FirstOrDefault(d => d.Id == id) is not { Connected: true }) { gone = true; break; }
                 }

@@ -22,6 +22,8 @@ public sealed class Settings
     public bool NotifyOnDisconnect { get; set; }
     /// <summary>Show a small popup at the top of the screen when a Bluetooth device connects.</summary>
     public bool ConnectPopup { get; set; } = true;
+    /// <summary>Hold popups back while an app that fills the whole screen is in front (games, full-screen video).</summary>
+    public bool QuietInFullScreen { get; set; } = true;
     /// <summary>"Blue" (default) or "System" (Windows accent colour).</summary>
     public string Accent { get; set; } = "Blue";
     /// <summary>Where pinned devices show: "Taskbar" (a strip on the taskbar, default) or "Tray" (one tray icon each).</summary>

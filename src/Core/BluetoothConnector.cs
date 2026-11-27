@@ -61,7 +61,16 @@ public static class BluetoothConnector
     public static Outcome Connect(string address, out string detail) => Send(address, 0 /* reconnect once */, out detail);
 
     /// <summary>Drops the audio connection, like "Disconnect" in Windows' Bluetooth settings. The device stays paired.</summary>
-    public static Outcome Disconnect(string address, out string detail) => Send(address, 1 /* disconnect once */, out detail);
+    public static Outcome Disconnect(string address, out string detail)
+    {
+        var outcome = Send(address, 1 /* disconnect once */, out detail);
+        if (outcome != Outcome.Requested) return outcome;
+        // Windows closes the audio connections at once but keeps the radio link open for about five more seconds.
+        // Give the audio a moment to close cleanly, then close the link too so the device shows as gone straight away.
+        Thread.Sleep(300);
+        detail += DropLink(address) ? ", link closed" : $", link not closed (error {Marshal.GetLastWin32Error()})";
+        return outcome;
+    }
 
     static Outcome Send(string address, uint requestId, out string detail)
     {
@@ -96,10 +105,18 @@ public static class BluetoothConnector
     {
         if (address.Length != 12 || !address.All(Uri.IsHexDigit)) return;
         var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
-        if (enumerator.EnumAudioEndpoints(2 /* inputs and outputs */, 0xF /* every state */, out var endpoints) < 0 || endpoints is null) return;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in Mine(address, Scan(enumerator, 2 /* inputs and outputs */, 0xF /* every state */)))
+            if (seen.Add(e.Link)) onLink(e.Link, enumerator);
+    }
+
+    /// <summary>Every sound input/output of the wanted kind, with the driver component it is wired to and its physical-device number.</summary>
+    static List<(IMMDevice Endpoint, string Link, Guid Container)> Scan(IMMDeviceEnumerator enumerator, int flow, int states)
+    {
+        var all = new List<(IMMDevice, string, Guid)>();
+        if (enumerator.EnumAudioEndpoints(flow, states, out var endpoints) < 0 || endpoints is null) return all;
         endpoints.GetCount(out uint count);
         var topologyId = typeof(IDeviceTopology).GUID;
-        var all = new List<(string Id, Guid Container)>();
         for (uint i = 0; i < count; i++)
         {
             if (endpoints.Item(i, out var endpoint) < 0 || endpoint is null) continue;
@@ -107,21 +124,105 @@ public static class BluetoothConnector
             if (topology.GetConnectorCount(out uint connectors) < 0 || connectors == 0) continue;
             if (topology.GetConnector(0, out var connector) < 0 || connector is null) continue;
             if (connector.GetDeviceIdConnectedTo(out string? id) < 0 || string.IsNullOrEmpty(id)) continue;
-            all.Add((id, ContainerOf(endpoint)));
+            all.Add((endpoint, id, ContainerOf(endpoint)));
         }
-
-        // The music connection carries the address in its identifier. The calls (hands-free) connection does not,
-        // so it is matched by Windows' "same physical device" number, and must still be a Bluetooth connection.
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var containers = all.Where(e => e.Id.Contains(address, StringComparison.OrdinalIgnoreCase) && e.Container != Guid.Empty)
-                            .Select(e => e.Container).ToHashSet();
-        foreach (var (id, container) in all)
-        {
-            bool mine = id.Contains(address, StringComparison.OrdinalIgnoreCase)
-                        || (containers.Contains(container) && id.Contains("bth", StringComparison.OrdinalIgnoreCase));
-            if (mine && seen.Add(id)) onLink(id, enumerator);
-        }
+        return all;
     }
+
+    /// <summary>
+    /// The music connection carries the address in its identifier. The calls (hands-free) connection does not,
+    /// so it is matched by Windows' "same physical device" number, and must still be a Bluetooth connection.
+    /// </summary>
+    static List<(IMMDevice Endpoint, string Link, Guid Container)> Mine(string address, List<(IMMDevice Endpoint, string Link, Guid Container)> all)
+    {
+        var containers = all.Where(e => e.Link.Contains(address, StringComparison.OrdinalIgnoreCase) && e.Container != Guid.Empty)
+                            .Select(e => e.Container).ToHashSet();
+        return all.Where(e => e.Link.Contains(address, StringComparison.OrdinalIgnoreCase)
+                              || (containers.Contains(e.Container) && e.Link.Contains("bth", StringComparison.OrdinalIgnoreCase))).ToList();
+    }
+
+    // ---- sound output ------------------------------------------------------------------------------------
+
+    /// <summary>The identifier of this device's working sound output (the music one when there are two), or null.</summary>
+    public static string? OutputOf(string address)
+    {
+        if (address.Length != 12 || !address.All(Uri.IsHexDigit)) return null;
+        try
+        {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            var known = Mine(address, Scan(enumerator, 2, 0xF)).Select(e => e.Link).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var outputs = Scan(enumerator, 0 /* outputs */, 1 /* working */).Where(e => known.Contains(e.Link))
+                .OrderByDescending(e => e.Link.Contains(address, StringComparison.OrdinalIgnoreCase));
+            foreach (var e in outputs)
+                if (e.Endpoint.GetId(out string? id) >= 0 && !string.IsNullOrEmpty(id)) return id;
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException) { }
+        return null;
+    }
+
+    /// <summary>The identifier of the output Windows currently plays sound through, or null.</summary>
+    public static string? CurrentOutput()
+    {
+        try
+        {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            return enumerator.GetDefaultAudioEndpoint(0, 1 /* music and video */, out var device) >= 0 && device is not null
+                   && device.GetId(out string? id) >= 0 ? id : null;
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// Makes an output the one Windows plays through, like picking it in the taskbar's sound menu. Windows has no
+    /// published call for this; this is the one its own sound panel uses.
+    /// </summary>
+    public static bool SetOutput(string endpointId)
+    {
+        try
+        {
+            var policy = (IPolicyConfig)new PolicyConfigClient();
+            bool ok = true;
+            foreach (int role in new[] { 0 /* system sounds */, 1 /* music and video */, 2 /* calls */ })
+                ok &= policy.SetDefaultEndpoint(endpointId, role) >= 0;
+            return ok;
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException or NotSupportedException) { return false; }
+    }
+
+    [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
+    class PolicyConfigClient { }
+
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("F8679F50-850A-41CF-9C72-430F290290C8")]
+    interface IPolicyConfig
+    {
+        // Ten calls this app never uses come first; they are listed only to keep the one below in its place.
+        [PreserveSig] int Unused1(); [PreserveSig] int Unused2(); [PreserveSig] int Unused3(); [PreserveSig] int Unused4(); [PreserveSig] int Unused5();
+        [PreserveSig] int Unused6(); [PreserveSig] int Unused7(); [PreserveSig] int Unused8(); [PreserveSig] int Unused9(); [PreserveSig] int Unused10();
+        [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string endpointId, int role);
+    }
+
+    // ---- dropping the radio link ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// Tells the PC's Bluetooth radio to close its link to a device now, instead of waiting the several seconds
+    /// Windows takes by itself after the audio connections close. The device stays paired.
+    /// </summary>
+    public static bool DropLink(string address)
+    {
+        if (address.Length != 12 || !address.All(Uri.IsHexDigit)) return false;
+        ulong target = Convert.ToUInt64(address, 16);
+        var find = new RadioFind { Size = (uint)Marshal.SizeOf<RadioFind>() };
+        IntPtr search = BluetoothFindFirstRadio(ref find, out IntPtr radio);
+        if (search == IntPtr.Zero) return false;
+        try { return DeviceIoControl(radio, 0x41000C /* disconnect device */, ref target, 8, IntPtr.Zero, 0, out _, IntPtr.Zero); }
+        finally { CloseHandle(radio); BluetoothFindRadioClose(search); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct RadioFind { public uint Size; }
+    [DllImport("bluetoothapis.dll", SetLastError = true)] static extern IntPtr BluetoothFindFirstRadio(ref RadioFind find, out IntPtr radio);
+    [DllImport("bluetoothapis.dll")] static extern bool BluetoothFindRadioClose(IntPtr search);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool DeviceIoControl(IntPtr device, uint code, ref ulong input, int inputSize, IntPtr output, int outputSize, out int returned, IntPtr overlapped);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
 
     static Guid ContainerOf(IMMDevice endpoint)
     {
@@ -176,6 +277,7 @@ public static class BluetoothConnector
     {
         [PreserveSig] int Activate(ref Guid iid, int context, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object instance);
         [PreserveSig] int OpenPropertyStore(int access, out IPropertyStore? store);
+        [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string? id);
     }
 
     [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("2A07407E-6497-4A18-9787-32F79BD0D98F")]

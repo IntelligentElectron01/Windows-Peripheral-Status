@@ -149,7 +149,7 @@ public sealed class TaskbarStrip : Window
                     break;
             }
             if (pods.ShowCase) Gauge(row, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12);
-            row.ToolTip = $"{name}: {pods.Describe()}";
+            row.ToolTip = Tip($"{name}: {pods.Describe()}");
             return row;
         }
 
@@ -161,12 +161,22 @@ public sealed class TaskbarStrip : Window
         };
         bool connecting = _c.IsConnecting(id);
         Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg, placeholder: connecting ? "…" : "–");
-        row.ToolTip = connecting ? $"{name}: connecting…"
+        row.ToolTip = Tip(connecting ? $"{name}: connecting…"
             : d is { SleepsWhenIdle: true } || id.StartsWith("LOGI", StringComparison.Ordinal) ? $"{name}: asleep or switched off. Move it to wake it."
             : d is null || !d.Connected ? $"{name}: not connected. Click to try to connect."
-            : $"{name}: {Levels.Text(d.Battery)}{(d.Charging ? " (charging)" : "")}";
+            : $"{name}: {Levels.Text(d.Battery)}{(d.Charging ? " (charging)" : "")}");
         return row;
     }
+
+    /// <summary>A hover label centred just above the item it describes (the default lands off to one side, over the tray icons).</summary>
+    static ToolTip Tip(string text) => new()
+    {
+        Content = text,
+        Placement = System.Windows.Controls.Primitives.PlacementMode.Custom,
+        CustomPopupPlacementCallback = (label, item, _) =>
+            [new System.Windows.Controls.Primitives.CustomPopupPlacement(
+                new Point((item.Width - label.Width) / 2, -label.Height - 12), System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal)],
+    };
 
     /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
     internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–")

@@ -161,6 +161,12 @@
           <CheckBox x:Name="ConnectPopupToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
                     Click="ConnectPopupToggle_Click" AutomationProperties.Name="Popup when a device connects"/>
         </Grid>
+        <Grid Margin="16,16,16,0">
+          <TextBlock Text="Hide popups in full-screen apps" VerticalAlignment="Center"
+                     ToolTip="No popups while a game or video fills the screen. A low-battery warning goes to Windows notifications instead."/>
+          <CheckBox x:Name="QuietToggle" Style="{StaticResource Switch}" HorizontalAlignment="Right"
+                    Click="QuietToggle_Click" AutomationProperties.Name="Hide popups in full-screen apps"/>
+        </Grid>
         <TextBlock Margin="16,14,16,0" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource Fg2}"
                    Text="Shows Bluetooth devices and Logitech wireless devices on a USB receiver. Other 2.4 GHz USB-dongle devices aren't supported."/>
         <Button Style="{StaticResource StdButton}" Content="Exit application" Margin="16,12,16,16" Click="Exit_Click"/>
