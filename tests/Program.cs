@@ -1,4 +1,4 @@
-// Automated checks for SPEC.md. No test framework: a failed check prints FAIL and the exit code is 1.
+// Automated checks for docs/SPEC.md. No test framework: a failed check prints FAIL and the exit code is 1.
 using System.Text.RegularExpressions;
 using BTBatteryIndicator.Core;
 using Microsoft.Win32;
@@ -88,6 +88,18 @@ if (args.Length > 0 && args[0] == "outputs")
     Console.WriteLine($"current output: kind {described?.Kind}, name length {described?.Name.Length}, built-in or Bluetooth name shown: {(described?.Kind is BluetoothConnector.OutputKind.BuiltIn or BluetoothConnector.OutputKind.Speakers ? described.Name : "(not printed)")}");
     var mic = BluetoothConnector.DescribeInput();
     Console.WriteLine($"current input: kind {mic?.Kind}, known: {BluetoothConnector.CurrentInput() is not null}");
+    if (args.Length > 1 && args[1] == "flip")
+    {
+        // Developer check, only run with the user's say-so: moves the sound to another working output for a few
+        // seconds and back again, so the "Output set" pill can be watched.
+        var other = BluetoothConnector.WorkingOutputs().FirstOrDefault(o => o != playingNow);
+        if (playingNow is null || other is null) { Console.WriteLine("flip: no second working output"); return 1; }
+        await Task.Delay(3000);
+        Console.WriteLine($"flip: away {BluetoothConnector.SetOutput(other)} -> kind {BluetoothConnector.DescribeOutput()?.Kind}");
+        await Task.Delay(5000);
+        Console.WriteLine($"flip: back {BluetoothConnector.SetOutput(playingNow)} -> kind {BluetoothConnector.DescribeOutput()?.Kind}, restored {BluetoothConnector.CurrentOutput() == playingNow}");
+        return 0;
+    }
     if (args.Length > 1 && args[1] == "watch")
     {
         // Waits 40 seconds and reports every change of sound output it is told about. Changes nothing itself.

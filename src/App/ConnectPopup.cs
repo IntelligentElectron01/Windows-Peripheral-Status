@@ -89,6 +89,8 @@ public sealed class ConnectPopup : Window
         string name = cls.ToString();
         // The desktop, the taskbar, Start and Search are not apps covering the screen.
         if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Windows.UI.Core.CoreWindow" || name.StartsWith("Xaml", StringComparison.Ordinal)) return false;
+        // Nor is a see-through overlay that lets clicks pass (screen markers, some game overlays): the app under it is in view.
+        if ((GetWindowLongPtrW(front, -20).ToInt64() & 0x20 /* click-through */) != 0) return false;
         IntPtr screen = MonitorFromWindow(front, 2);
         if (sameScreenAs != IntPtr.Zero && MonitorFromWindow(sameScreenAs, 2) != screen) return false;
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };

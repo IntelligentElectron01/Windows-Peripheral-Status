@@ -168,6 +168,20 @@ public static class BluetoothConnector
     /// <summary>The identifier of the output Windows currently plays sound through, or null.</summary>
     public static string? CurrentOutput() => Current(0);
 
+    /// <summary>The identifiers of every output that is working right now (for diagnostics and tests).</summary>
+    public static List<string> WorkingOutputs()
+    {
+        var ids = new List<string>();
+        try
+        {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            foreach (var e in Scan(enumerator, 0, 1 /* working */))
+                if (e.Endpoint.GetId(out string? id) >= 0 && !string.IsNullOrEmpty(id)) ids.Add(id);
+        }
+        catch (Exception e) when (e is COMException or InvalidCastException or UnauthorizedAccessException) { }
+        return ids;
+    }
+
     /// <summary>The identifier of the microphone Windows currently listens through, or null.</summary>
     public static string? CurrentInput() => Current(1);
 
