@@ -25,9 +25,9 @@ shows "No battery info".
 
 All screenshots use made-up demo devices.
 
-| Device list | Settings |
-| --- | --- |
-| ![Device list, dark theme](docs/screenshots/flyout-dark.png) | ![Settings panel, dark theme](docs/screenshots/flyout-settings-dark.png) |
+| Device list | Settings | Notifications |
+| --- | --- | --- |
+| ![Device list, dark theme](docs/screenshots/flyout-dark.png) | ![Settings page, dark theme](docs/screenshots/flyout-settings-dark.png) | ![Notifications page, dark theme](docs/screenshots/flyout-notifications-dark.png) |
 
 | Light theme | Battery history |
 | --- | --- |
@@ -77,7 +77,7 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (ad
 - **Click a pinned device that is not connected** (on the taskbar strip): asks Windows to connect it. Works for headphones, earbuds and speakers.
 - **Click a connected headphone, earbud or speaker** on the strip: Windows plays sound through it, instead of the PC speakers or whatever was playing before. If it is already playing, the click opens the panel.
 - **Click a row** or the **…** button: battery history, rename, hide.
-- **Gear** button: a switch for each notification (low battery and its level, device connected or disconnected, sound output or microphone changed, quiet in full-screen apps), accent colour, taskbar strip or tray icons, Logitech reading, a keyboard shortcut to open the panel, hidden devices.
+- **Gear** button: opens the settings page (accent colour, taskbar strip or tray icons, Logitech reading, hidden devices, start with Windows, a keyboard shortcut to open the panel, exit). Its **Notifications** row opens a page with a switch for each popup and notification. The back arrow or Esc steps back.
 
 ## Build from source (one command)
 

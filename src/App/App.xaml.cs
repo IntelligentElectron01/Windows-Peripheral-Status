@@ -320,6 +320,11 @@ public partial class App : Application
             c.Change(s => s.For("DEMO00000004").Hidden = true);
             await Idle();
             Save(fly, Path.Combine(dir, $"flyout-settings-{tag}.png"));
+            fly.ShowNotifications();
+            await Idle();
+            await Task.Delay(200);   // this page is shorter: let the window finish shrinking before the picture is taken
+            await Idle();
+            Save(fly, Path.Combine(dir, $"flyout-notifications-{tag}.png"));
             c.Change(s => s.For("DEMO00000004").Hidden = false);
             fly.Close();
 
@@ -416,7 +421,14 @@ public partial class App : Application
             var bg = w.Background is SolidColorBrush { Color.A: > 0 } b ? (Brush)b : Theme.Brush(Theme.Dark ? Color.FromRgb(20, 20, 20) : Color.FromRgb(200, 210, 220));
             var size = new Size(root.ActualWidth + root.Margin.Left + root.Margin.Right, root.ActualHeight + root.Margin.Top + root.Margin.Bottom);
             dc.DrawRectangle(bg, null, new Rect(size));
-            dc.DrawRectangle(new VisualBrush(root) { Stretch = Stretch.None }, null,
+            // Exactly the content's own rectangle, top-left aligned (the default centres on whatever was drawn,
+            // which shifts the picture when a shadow or a page change makes that uneven).
+            var exact = new VisualBrush(root)
+            {
+                Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
+                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect((Point)VisualTreeHelper.GetOffset(root), new Size(root.ActualWidth, root.ActualHeight)),
+            };
+            dc.DrawRectangle(exact, null,
                 new Rect(root.Margin.Left, root.Margin.Top, root.ActualWidth, root.ActualHeight));
         }
         var full = new Size(root.ActualWidth + root.Margin.Left + root.Margin.Right, root.ActualHeight + root.Margin.Top + root.Margin.Bottom);

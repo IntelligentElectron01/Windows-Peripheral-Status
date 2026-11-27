@@ -85,6 +85,7 @@ public partial class FlyoutWindow : Window
         _clock.Stop();
         if (_capturingHotkey) EndHotkeyCapture(null);
         Hide();
+        Go(Page.Devices, animate: false);   // always reopen on the device list
         DeviceList.ItemsSource = null; // let the row visuals be freed while hidden
         Closed_?.Invoke();
     }
@@ -145,6 +146,8 @@ public partial class FlyoutWindow : Window
         QuietToggle.IsChecked = s.QuietInFullScreen;
         OutputToggle.IsChecked = s.OutputPopup;
         InputToggle.IsChecked = s.InputPopup;
+        int on = new[] { s.LowBatteryNotify, s.ConnectPopup, s.OutputPopup, s.InputPopup, s.NotifyOnDisconnect }.Count(x => x);
+        NotificationsSummary.Text = on == 0 ? "All off" : on == 5 ? "All on" : $"{on} of 5 on";
         LowToggle.IsChecked = s.LowBatteryNotify;
         ThresholdSlider.Value = s.LowBatteryThreshold;
         ThresholdSlider.IsEnabled = s.LowBatteryNotify;
@@ -225,10 +228,42 @@ public partial class FlyoutWindow : Window
         RefreshButton.IsEnabled = true;
     }
 
-    void Settings_Click(object sender, RoutedEventArgs e) =>
-        SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+    // ---- pages: devices, settings, and notifications inside settings --------------------------------
 
-    public void ShowSettings(bool show) => SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    enum Page { Devices, Settings, Notifications }
+    Page _page = Page.Devices;
+
+    void Settings_Click(object sender, RoutedEventArgs e) => Go(Page.Settings);
+    void Notifications_Click(object sender, RoutedEventArgs e) => Go(Page.Notifications);
+    void Back_Click(object sender, RoutedEventArgs e) => GoBack();
+
+    void GoBack() => Go(_page == Page.Notifications ? Page.Settings : Page.Devices, back: true);
+
+    public void ShowSettings(bool show) => Go(show ? Page.Settings : Page.Devices, animate: false);
+    public void ShowNotifications() => Go(Page.Notifications, animate: false);
+
+    void Go(Page page, bool back = false, bool animate = true)
+    {
+        if (_capturingHotkey) EndHotkeyCapture(null);
+        _page = page;
+        MainPage.Visibility = page == Page.Devices ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPage.Visibility = page == Page.Settings ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsPage.Visibility = page == Page.Notifications ? Visibility.Visible : Visibility.Collapsed;
+
+        bool home = page == Page.Devices;
+        TitleText.Text = home ? "Wireless Device Monitor" : page == Page.Settings ? "Settings" : "Notifications";
+        BackButton.Visibility = home ? Visibility.Collapsed : Visibility.Visible;
+        SyncText.Visibility = RefreshButton.Visibility = SettingsButton.Visibility = home ? Visibility.Visible : Visibility.Collapsed;
+
+        // The new page eases in from the side it came from: forwards from the right, back from the left.
+        FrameworkElement shown = home ? MainPage : page == Page.Settings ? SettingsPage : NotificationsPage;
+        if (!animate || !IsVisible) { shown.Opacity = 1; ((TranslateTransform)shown.RenderTransform).X = 0; return; }
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var time = TimeSpan.FromMilliseconds(160);
+        shown.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, time) { EasingFunction = ease });
+        shown.RenderTransform.BeginAnimation(TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(back ? -14 : 14, 0, time) { EasingFunction = ease });
+    }
 
     void Pin_Click(object sender, RoutedEventArgs e)
     {
@@ -375,7 +410,8 @@ public partial class FlyoutWindow : Window
     {
         if (!_capturingHotkey)
         {
-            if (e.Key == Key.Escape) HideFlyout();
+            // Esc steps back out of the settings pages first, then closes the panel.
+            if (e.Key == Key.Escape) { if (_page == Page.Devices) HideFlyout(); else GoBack(); }
             return;
         }
         // Only reached if the key capture could not be installed; normally the keys never get this far.
