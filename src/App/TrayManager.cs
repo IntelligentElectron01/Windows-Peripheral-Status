@@ -1,8 +1,8 @@
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using SD = System.Drawing;
 using WF = System.Windows.Forms;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>
 /// Owns the tray icons: one per pinned device showing its level (R2, R3), or a single app icon

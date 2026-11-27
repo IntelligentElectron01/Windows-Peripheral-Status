@@ -1,13 +1,13 @@
 <#
   Measures what the packaged app costs while sitting idle in the tray.
     .\tools\measure.ps1 [-Seconds 60] [-Demo]
-  Starts dist\BTBatteryIndicator\BTBatteryIndicator.exe quietly, waits for it to settle, then samples
+  Starts dist\WirelessDeviceMonitor\WirelessDeviceMonitor.exe quietly, waits for it to settle, then samples
   memory, threads, handles and CPU time. Leaves the app running.
 #>
 param([int]$Seconds = 60, [switch]$Demo)
 
-$exe = Join-Path (Split-Path $PSScriptRoot) 'dist\BTBatteryIndicator\BTBatteryIndicator.exe'
-Get-Process BTBatteryIndicator -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | Stop-Process -Force
+$exe = Join-Path (Split-Path $PSScriptRoot) 'dist\WirelessDeviceMonitor\WirelessDeviceMonitor.exe'
+Get-Process WirelessDeviceMonitor -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | Stop-Process -Force
 Start-Sleep 1
 $appArgs = @('--tray'); if ($Demo) { $appArgs += '--demo' }
 $p = Start-Process $exe -ArgumentList $appArgs -PassThru

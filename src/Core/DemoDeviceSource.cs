@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>Made-up devices for --demo mode and tests, so the UI can be tried without real hardware.</summary>
 public sealed class DemoDeviceSource : IDeviceSource

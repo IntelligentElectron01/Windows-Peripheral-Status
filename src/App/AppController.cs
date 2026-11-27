@@ -1,8 +1,8 @@
 using System.IO;
 using System.Windows.Threading;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>Holds the app's state: scans devices on a timer, records history, raises alerts, saves settings.</summary>
 public sealed class AppController

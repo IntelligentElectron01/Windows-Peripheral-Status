@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Windows.Input;
 using System.Windows.Interop;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>
 /// Registers one system-wide keyboard shortcut with Windows and reports when it is pressed.
@@ -20,7 +20,7 @@ public sealed class HotkeyManager : IDisposable
     public HotkeyManager()
     {
         // An invisible window that exists only to receive the "shortcut pressed" message.
-        _window = new HwndSource(new HwndSourceParameters("BT Battery Indicator shortcut") { ParentWindow = new IntPtr(-3), WindowStyle = 0 });
+        _window = new HwndSource(new HwndSourceParameters("Wireless Device Monitor shortcut") { ParentWindow = new IntPtr(-3), WindowStyle = 0 });
         _window.AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
         {
             if (msg == 0x0312 /* shortcut pressed */ && wParam.ToInt32() == Id) { handled = true; Pressed?.Invoke(); }

@@ -6,9 +6,9 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>What the pill is announcing.</summary>
 public enum PopupKind { Connected, LowBattery, Output, Input }
@@ -127,7 +127,7 @@ public sealed class ConnectPopup : Window
         _kind = kind;
         _glyph = glyph;
         if (kind == PopupKind.LowBattery) _hold.Interval = TimeSpan.FromSeconds(4.5);
-        Title = "BT Battery Indicator popup";
+        Title = "Wireless Device Monitor popup";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;

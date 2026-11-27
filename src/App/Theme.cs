@@ -1,9 +1,9 @@
 using System.Windows;
 using System.Windows.Media;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using Microsoft.Win32;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>Owns every colour in the app and keeps them in step with the Windows light/dark setting (R10).</summary>
 public static class Theme

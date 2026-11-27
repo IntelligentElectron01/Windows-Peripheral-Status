@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>
 /// Reads paired Bluetooth devices from the Windows device tree (Configuration Manager API).

@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using SD = System.Drawing;
 using SDD = System.Drawing.Drawing2D;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>Draws the tray icons and the app icon at runtime. All artwork is original.</summary>
 public static class IconArt

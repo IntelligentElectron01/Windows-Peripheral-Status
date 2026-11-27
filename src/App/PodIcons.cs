@@ -2,9 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>
 /// Original earbud artwork drawn from simple shapes (a rounded head on a short stem, and a charging case).

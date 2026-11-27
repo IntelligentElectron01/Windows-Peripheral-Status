@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Input;
 using System.Windows.Threading;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>
 /// Used only while the user is choosing a shortcut in settings: takes every key press before Windows or any

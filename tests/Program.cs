@@ -1,8 +1,8 @@
 // Automated checks for docs/SPEC.md. No test framework: a failed check prints FAIL and the exit code is 1.
 using System.Text.RegularExpressions;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using Microsoft.Win32;
-using Node = BTBatteryIndicator.Core.WindowsDeviceSource.Node;
+using Node = WirelessDeviceMonitor.Core.WindowsDeviceSource.Node;
 
 int passed = 0, failed = 0;
 string current = "";
@@ -115,6 +115,30 @@ if (args.Length > 0 && args[0] == "outputs")
     return 0;
 }
 
+if (args.Length > 0 && args[0] == "alloc")
+{
+    // How much memory one round of each periodic job asks for (it becomes garbage straight afterwards). Reads only.
+    static double Mb(Action job, int times)
+    {
+        job();   // first run loads code; not counted
+        long before = GC.GetTotalAllocatedBytes(true);
+        for (int i = 0; i < times; i++) job();
+        return (GC.GetTotalAllocatedBytes(true) - before) / 1048576.0 / times;
+    }
+    var windows = new WindowsDeviceSource();
+    Console.WriteLine($"alloc: Windows scan {Mb(() => windows.Scan(), 10):0.000} MB each");
+    var receiver = new LogitechSource();
+    Console.WriteLine($"alloc: Logitech scan {Mb(() => receiver.Scan(), 3):0.000} MB each");
+    var pods = new BlePodsListener();
+    long b0 = GC.GetTotalAllocatedBytes(true);
+    await pods.ListenAsync(TimeSpan.FromSeconds(5));
+    Console.WriteLine($"alloc: one 5 s earbud listen {(GC.GetTotalAllocatedBytes(true) - b0) / 1048576.0:0.000} MB (first run, includes loading)");
+    b0 = GC.GetTotalAllocatedBytes(true);
+    await pods.ListenAsync(TimeSpan.FromSeconds(5));
+    Console.WriteLine($"alloc: second 5 s earbud listen {(GC.GetTotalAllocatedBytes(true) - b0) / 1048576.0:0.000} MB");
+    return 0;
+}
+
 if (args.Length > 0 && args[0] == "logi")
 {
     // Asks Logitech wireless devices for their name and battery level and prints what came back.
@@ -130,7 +154,7 @@ if (args.Length > 0 && args[0] == "logi")
     return 0;
 }
 
-string temp = Path.Combine(Path.GetTempPath(), "BTBI-tests-" + Guid.NewGuid().ToString("N"));
+string temp = Path.Combine(Path.GetTempPath(), "WDM-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(temp);
 var t0 = new DateTime(2026, 1, 10, 12, 0, 0, DateTimeKind.Utc);
 
@@ -491,19 +515,19 @@ Section("R15 shortcut to open");
 Section("R9 start with Windows");
 {
     // Uses a throwaway key under HKCU, never the real Run key.
-    string key = @"Software\BTBatteryIndicator.Tests\" + Guid.NewGuid().ToString("N");
+    string key = @"Software\WirelessDeviceMonitor.Tests\" + Guid.NewGuid().ToString("N");
     var auto = new Autostart(key, "TestValue");
-    string exe = @"C:\Some Folder\BTBatteryIndicator.exe";
+    string exe = @"C:\Some Folder\WirelessDeviceMonitor.exe";
     try
     {
         Check(!auto.IsEnabled(exe), "off by default");
         Check(auto.Set(true, exe) && auto.IsEnabled(exe), "turning on writes the entry");
         using (var k = Registry.CurrentUser.OpenSubKey(key))
-            Check((string?)k?.GetValue("TestValue") == "\"C:\\Some Folder\\BTBatteryIndicator.exe\" --tray", "entry is quoted and starts quietly in the tray");
-        Check(!auto.IsEnabled(@"C:\Elsewhere\BTBatteryIndicator.exe"), "entry for a different copy does not count");
+            Check((string?)k?.GetValue("TestValue") == "\"C:\\Some Folder\\WirelessDeviceMonitor.exe\" --tray", "entry is quoted and starts quietly in the tray");
+        Check(!auto.IsEnabled(@"C:\Elsewhere\WirelessDeviceMonitor.exe"), "entry for a different copy does not count");
         Check(auto.Set(false, exe) && !auto.IsEnabled(exe), "turning off removes the entry");
     }
-    finally { Registry.CurrentUser.DeleteSubKeyTree(@"Software\BTBatteryIndicator.Tests", throwOnMissingSubKey: false); }
+    finally { Registry.CurrentUser.DeleteSubKeyTree(@"Software\WirelessDeviceMonitor.Tests", throwOnMissingSubKey: false); }
     Check(Autostart.RunKey.StartsWith("Software\\"), "uses the per-user key (no admin needed)");
 }
 

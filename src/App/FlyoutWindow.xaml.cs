@@ -3,10 +3,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using WF = System.Windows.Forms;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 public sealed class DeviceRow
 {

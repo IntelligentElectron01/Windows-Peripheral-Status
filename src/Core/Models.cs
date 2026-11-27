@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 public enum DeviceKind { Generic, Mouse, Keyboard, Headphones, Speaker, Gamepad, Phone }
 

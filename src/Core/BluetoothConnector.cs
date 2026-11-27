@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>
 /// Asks Windows to connect or disconnect an already-paired Bluetooth audio device (headphones, earbuds, speakers).

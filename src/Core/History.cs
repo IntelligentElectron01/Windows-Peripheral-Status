@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 public sealed class Sample
 {

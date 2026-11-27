@@ -22,7 +22,7 @@ public static class StripCapture {
   public static string Run(int seconds, string outDir) {
     SetProcessDPIAware();
     // Looked up by title: the strip rides in the taskbar's own window layer, which plain window listing skips.
-    IntPtr bar = FindWindowW("Shell_TrayWnd", null), strip = FindWindowW(null, "BT Battery Indicator taskbar strip");
+    IntPtr bar = FindWindowW("Shell_TrayWnd", null), strip = FindWindowW(null, "Wireless Device Monitor taskbar strip");
     if (strip == IntPtr.Zero) return "Strip window not found. Pin a device first and make sure the app is running.";
 
     var log = new List<string>(); var sw = Stopwatch.StartNew();

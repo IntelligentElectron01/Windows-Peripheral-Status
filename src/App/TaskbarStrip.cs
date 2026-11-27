@@ -6,10 +6,10 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using Microsoft.Win32;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>
 /// A small pill that sits on the taskbar, just left of the clock area, showing each pinned device
@@ -42,7 +42,7 @@ public sealed class TaskbarStrip : Window
     public TaskbarStrip(AppController c)
     {
         _c = c;
-        Title = "BT Battery Indicator taskbar strip";
+        Title = "Wireless Device Monitor taskbar strip";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;

@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>
 /// A keyboard shortcut such as "Ctrl+Alt+B", stored as text in settings. The key part uses Windows key names

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 public sealed class DevicePrefs
 {

@@ -4,9 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 /// <summary>R7: seven-day battery chart with a time-left estimate for one device.</summary>
 public sealed class HistoryWindow : Window

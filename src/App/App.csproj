@@ -1,12 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <RootNamespace>BTBatteryIndicator</RootNamespace>
-    <AssemblyName>BTBatteryIndicator</AssemblyName>
-    <Product>BT Battery Indicator</Product>
+    <RootNamespace>WirelessDeviceMonitor</RootNamespace>
+    <AssemblyName>WirelessDeviceMonitor</AssemblyName>
+    <Product>Wireless Device Monitor</Product>
     <Version>1.0.0</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -24,6 +24,10 @@
     <!-- Use Windows' built-in language tables instead of loading the large ICU library. -->
     <RuntimeHostConfigurationOption Include="System.Globalization.UseNls" Value="true" />
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+    <!-- .NET lets short-lived memory pile up to a budget sized for the processor (16 MB measured) before clearing
+         it out. A tray app makes about 0.2 MB a minute while idle, so its memory would creep upwards for over an
+         hour between clear-outs. 4 MB keeps the creep small and each clear-out too short to notice. -->
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <ProjectReference Include="..\Core\Core.csproj" />

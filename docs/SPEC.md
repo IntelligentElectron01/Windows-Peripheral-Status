@@ -1,4 +1,4 @@
-# BT Battery Indicator — Spec
+# Wireless Device Monitor — Spec
 
 Free, local Windows 10 (1809+) / 11 tray app showing battery levels of paired Bluetooth devices.
 
@@ -44,7 +44,7 @@ Popup motion (2026-11-26): measured in demo mode at 85 to 89 frames per 0.55-sec
 9. The G502 appears in the flyout with a level close to what Logitech G HUB shows (voltage-based, so a few points' difference is normal). Plug in its charging cable: the level shows a lightning mark within about 2 minutes. Confirm G HUB still works normally alongside.
 
 ## User choices (2026-11-25)
-- Name: **BT Battery Indicator**.
+- Name: **Wireless Device Monitor**.
 - Accent colour: a setting; default blue, alternative "Windows accent".
 - Private GitHub repository.
 - Real test hardware: mouse/keyboard (Low Energy) and headphones/earbuds (classic Bluetooth).
@@ -58,3 +58,4 @@ Popup motion (2026-11-26): measured in demo mode at 85 to 89 frames per 0.55-sec
 - The flyout may sit slightly off on setups with several monitors at different scaling.
 - Unsigned build: SmartScreen may warn on first run.
 R20 (2026-11-27): a pill appears whenever Windows' sound output changes, however it was changed (the strip, Windows' sound menu, a device connecting or leaving): name and "Output set". The PC's own speakers show as "Laptop speakers" with a laptop icon ("PC speakers" on a PC without a battery); a screen's speakers get a screen icon. The same for the microphone: "Input set", "Laptop microphone". Left out: the pill for a device that showed "Connected" in the last 8 seconds. Windows reports the changes; nothing is polled. Status: AUTO for telling the kinds apart; pill pictures checked; on the development PC the current output and microphone are read correctly and Windows accepts the listener. Confirmed by hand 2026-11-27: changing the output shows the pill, including for the laptop speakers. Not done: a microphone change seen by hand.
+R13 addition (2026-11-27): no timer-driven memory clean-up. Idle memory is kept level by limiting how much short-lived memory .NET lets pile up (4 MB instead of the measured 16 MB). Status: limit confirmed with `--gc-probe` (4.0 MB); ten idle minutes without any clean-up showed committed memory flat at 50-55 MB. Popup frame timing with and without the limit was compared but the PC was in use, so that comparison is inconclusive (no consistent difference seen).

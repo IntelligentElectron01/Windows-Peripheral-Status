@@ -1,5 +1,5 @@
 <#
-  Installs BT Battery Indicator for the current user. No administrator rights needed.
+  Installs Wireless Device Monitor for the current user. No administrator rights needed.
     powershell -ExecutionPolicy Bypass -File install.ps1             install (or update) and start
     powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall  remove the app
     ... -Uninstall -RemoveData                                       also delete settings and history
@@ -7,34 +7,48 @@
     ... -NoDesktopShortcut                                           skip the desktop shortcut
 
   What it touches, all inside your own user profile:
-    %LOCALAPPDATA%\Programs\BTBatteryIndicator      the app files
-    Start Menu\Programs\BT Battery Indicator.lnk    a shortcut (search "BT Battery" in Start)
-    Desktop\BT Battery Indicator.lnk                a shortcut
-    %LOCALAPPDATA%\BTBatteryIndicator               settings + history (only removed with -RemoveData)
-    HKCU\...\Run\BTBatteryIndicator                 only if you switch on "Start with Windows" in the app
+    %LOCALAPPDATA%\Programs\WirelessDeviceMonitor      the app files
+    Start Menu\Programs\Wireless Device Monitor.lnk    a shortcut (search "Wireless Device" in Start)
+    Desktop\Wireless Device Monitor.lnk                a shortcut
+    %LOCALAPPDATA%\WirelessDeviceMonitor               settings + history (only removed with -RemoveData)
+    HKCU\...\Run\WirelessDeviceMonitor                 only if you switch on "Start with Windows" in the app
 #>
 param([switch]$Uninstall, [switch]$RemoveData, [switch]$Quiet, [switch]$NoDesktopShortcut)
 
 $ErrorActionPreference = 'Stop'
-$name = 'BTBatteryIndicator'
+$name = 'WirelessDeviceMonitor'
 $target = Join-Path $env:LOCALAPPDATA "Programs\$name"
-$shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'BT Battery Indicator.lnk'
+$shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Wireless Device Monitor.lnk'
 $data = Join-Path $env:LOCALAPPDATA $name
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 
-$desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'BT Battery Indicator.lnk'
+$desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Wireless Device Monitor.lnk'
+
+# The app was called "BT Battery Indicator" before version 1.0. A copy installed under that name is replaced,
+# not left beside the new one, and its settings and history are carried over.
+$oldName = 'BTBatteryIndicator'
+$oldTarget = Join-Path $env:LOCALAPPDATA "Programs\$oldName"
+$oldData = Join-Path $env:LOCALAPPDATA $oldName
+$oldShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'BT Battery Indicator.lnk'
+$oldDesktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'BT Battery Indicator.lnk'
 
 # Only one copy can run at a time, so stop any running copy (installed or run from a build folder).
-Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process $name, $oldName -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
+
+$hadOldAutostart = [bool](Get-ItemProperty -Path $runKey -Name $oldName -ErrorAction SilentlyContinue)
+if (Test-Path $oldTarget) { Remove-Item $oldTarget -Recurse -Force }
+foreach ($old in $oldShortcut, $oldDesktop) { if (Test-Path $old) { Remove-Item $old -Force } }
+Remove-ItemProperty -Path $runKey -Name $oldName -ErrorAction SilentlyContinue
+if ((Test-Path $oldData) -and -not (Test-Path $data) -and -not $Uninstall) { Move-Item $oldData $data }
 
 if ($Uninstall) {
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     if (Test-Path $shortcut) { Remove-Item $shortcut -Force }
     if (Test-Path $desktop) { Remove-Item $desktop -Force }
     Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue
-    if ($RemoveData -and (Test-Path $data)) { Remove-Item $data -Recurse -Force }
-    'BT Battery Indicator removed.'
+    if ($RemoveData) { foreach ($d in $data, $oldData) { if (Test-Path $d) { Remove-Item $d -Recurse -Force } } }
+    'Wireless Device Monitor removed.'
     return
 }
 
@@ -52,13 +66,13 @@ foreach ($path in $links) {
     $link = $shell.CreateShortcut($path)
     $link.TargetPath = Join-Path $target "$name.exe"
     $link.WorkingDirectory = $target
-    $link.Description = 'Battery levels of your Bluetooth devices'
+    $link.Description = 'Battery and connection status of your wireless devices'
     $link.Save()
 }
 
 # If "Start with Windows" was on for an older copy elsewhere, point it at this one.
 $existing = (Get-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue).$name
-if ($existing) { Set-ItemProperty -Path $runKey -Name $name -Value ('"{0}" --tray' -f (Join-Path $target "$name.exe")) }
+if ($existing -or $hadOldAutostart) { Set-ItemProperty -Path $runKey -Name $name -Value ('"{0}" --tray' -f (Join-Path $target "$name.exe")) }
 
 if ($Quiet) { Start-Process (Join-Path $target "$name.exe") -ArgumentList '--tray' } else { Start-Process (Join-Path $target "$name.exe") }
 "Installed to $target. Look for the icon near the clock (it may be under the ^ arrow)."

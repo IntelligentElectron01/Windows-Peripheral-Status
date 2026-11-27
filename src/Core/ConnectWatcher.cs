@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>
 /// Notices the moment a device goes from not connected to connected, for the popup at the top of the screen.

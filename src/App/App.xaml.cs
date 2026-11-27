@@ -3,11 +3,11 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using BTBatteryIndicator.Core;
+using WirelessDeviceMonitor.Core;
 using Microsoft.Win32;
 using SD = System.Drawing;
 
-namespace BTBatteryIndicator;
+namespace WirelessDeviceMonitor;
 
 public partial class App : Application
 {
@@ -34,12 +34,24 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        int probeArg = args.IndexOf("--gc-probe");
+        if (probeArg >= 0 && e.Args.Length > probeArg + 1)
+        {
+            // How much short-lived memory may pile up before .NET clears it out (measured, not assumed).
+            GC.Collect();
+            int before = GC.CollectionCount(0);
+            long start = GC.GetTotalAllocatedBytes(true);
+            while (GC.CollectionCount(0) == before) GC.KeepAlive(new byte[1024]);
+            File.WriteAllText(e.Args[probeArg + 1], FormattableString.Invariant($"{(GC.GetTotalAllocatedBytes(true) - start) / 1048576.0:0.0} MB allocated before the first clear-out"));
+            Shutdown();
+            return;
+        }
         int shotArg = args.IndexOf("--shot");
         bool shot = shotArg >= 0 && e.Args.Length > shotArg + 1;
         bool demo = shot || args.Contains("--demo");
         bool quiet = args.Contains(Autostart.QuietArg);
 
-        string instance = demo ? "BTBatteryIndicator.Demo" : "BTBatteryIndicator";
+        string instance = demo ? "WirelessDeviceMonitor.Demo" : "WirelessDeviceMonitor";
         if (!shot)
         {
             _mutex = new Mutex(true, @"Local\" + instance, out bool first);
@@ -55,7 +67,13 @@ public partial class App : Application
         DispatcherUnhandledException += (_, ex) => { _c?.Log(ex.Exception); ex.Handled = true; };
 
         string dataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BTBatteryIndicator");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WirelessDeviceMonitor");
+        // The app used to be called BT Battery Indicator: carry its settings and history over, once.
+        string oldDataDir = Path.Combine(Path.GetDirectoryName(dataDir)!, "BTBatteryIndicator");
+        if (!Directory.Exists(dataDir) && Directory.Exists(oldDataDir))
+        {
+            try { Directory.Move(oldDataDir, dataDir); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
         if (demo) dataDir = Path.Combine(dataDir, shot ? "shot" : "demo");
         if (shot && Directory.Exists(dataDir)) Directory.Delete(dataDir, true);
 
@@ -79,10 +97,25 @@ public partial class App : Application
         _trim.Tick += (_, _) => { _trim.Stop(); TrimMemory(); };
         _flyout.Closed_ += ScheduleTrim;
         ConnectPopup.AllClosed += ScheduleTrim;
-        // The regular device scans slowly pull memory back in, so repeat the clean-up every ten minutes
-        // while no window of the app is open.
-        _tidy.Tick += (_, _) => { if (_flyout is { IsVisible: false } && _historyWindows.Count == 0) TrimMemory(); };
-        _tidy.Start();
+        // The clean-up runs once after the app's windows close, when their memory will not be wanted again for
+        // a while. It is deliberately not repeated on a timer: while idle the app does not grow (see --memlog),
+        // and pushing out memory that the next device scan needs only makes Windows fetch it straight back.
+        if (args.Contains("--memlog"))
+        {
+            // Developer helper: one line of memory figures every 30 seconds.
+            string log = Path.Combine(dataDir, "memlog.txt");
+            File.WriteAllText(log, "min | RAM in use | committed | managed heap | heap committed | allocated since start | collections 0/1/2\n");
+            var began = DateTime.UtcNow;
+            var sample = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            sample.Tick += (_, _) =>
+            {
+                using var me = System.Diagnostics.Process.GetCurrentProcess();
+                var gc = GC.GetGCMemoryInfo();
+                File.AppendAllText(log, FormattableString.Invariant(
+                    $"{(DateTime.UtcNow - began).TotalMinutes:0.0} | {me.WorkingSet64 / 1048576.0:0.0} | {me.PrivateMemorySize64 / 1048576.0:0.0} | {GC.GetTotalMemory(false) / 1048576.0:0.00} | {gc.TotalCommittedBytes / 1048576.0:0.0} | {GC.GetTotalAllocatedBytes() / 1048576.0:0.0} | {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}\n"));
+            };
+            sample.Start();
+        }
         ScheduleTrim();
 
         CreateStrip();
@@ -236,7 +269,6 @@ public partial class App : Application
     // ---- memory: after the UI has been used, hand unused RAM back to Windows -------------------
 
     readonly DispatcherTimer _trim = new() { Interval = TimeSpan.FromSeconds(12) };
-    readonly DispatcherTimer _tidy = new() { Interval = TimeSpan.FromMinutes(10) };
 
     void ScheduleTrim() { _trim.Stop(); _trim.Start(); }
 

@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
 
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>The message format Logitech wireless devices use ("HID++ 2.0"), as pure functions so it can be tested.</summary>
 public static class Hidpp

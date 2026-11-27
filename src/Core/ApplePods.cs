@@ -1,4 +1,4 @@
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>How earbud levels should be presented, following the way Apple devices show them.</summary>
 public enum PodView

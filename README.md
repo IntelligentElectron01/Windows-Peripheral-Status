@@ -1,6 +1,7 @@
-# BT Battery Indicator
+# Wireless Device Monitor
 
-A small, free Windows 10 (1809+) / Windows 11 tray app that shows the battery level of your paired Bluetooth devices.
+A small, free Windows 10 (1809+) / Windows 11 tray app that shows the battery level and connection state of your
+wireless devices on the taskbar, and lets you switch sound output with a click.
 Everything stays on your PC: no account, no ads, no telemetry, no network access.
 
 - Battery % for Bluetooth mice, keyboards, headphones, earbuds, controllers and phones
@@ -52,7 +53,7 @@ Low battery, and a change of sound output or microphone (shown however it was ch
 
 ## Install (one command)
 
-Get `BTBatteryIndicator-win-x64.zip` (from this repository's Releases page if one is published, or build it as shown
+Get `WirelessDeviceMonitor-win-x64.zip` (from this repository's Releases page if one is published, or build it as shown
 below). Unzip it, click the File Explorer address bar in that folder, type `powershell`, press Enter, then run:
 
 ```powershell
@@ -60,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 It installs for your user only (no administrator prompt), adds Start Menu and desktop shortcuts, and starts the app.
-After that, start it any time from the Start Menu (type "BT Battery") or the desktop shortcut. Windows 11 hides new tray icons under
+After that, start it any time from the Start Menu (type "Wireless Device") or the desktop shortcut. Windows 11 hides new tray icons under
 the `^` arrow near the clock; drag the icon out to keep it visible.
 
 The app is not code-signed, so Windows SmartScreen may show "Windows protected your PC" the first time.
@@ -86,7 +87,7 @@ Needs the .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`). Then, in the p
 .\build.ps1 package
 ```
 
-This produces `dist\BTBatteryIndicator-win-x64.zip`, and if the app is already installed on that PC it updates and restarts
+This produces `dist\WirelessDeviceMonitor-win-x64.zip`, and if the app is already installed on that PC it updates and restarts
 the installed copy. `.\build.ps1 install` builds and installs in one go. `.\build.ps1` on its own builds and runs the automated tests;
 `.\build.ps1 demo` starts the app with made-up devices so you can try everything without real hardware.
 
@@ -102,7 +103,7 @@ broadcast for a few seconds at a time. Listening is receive-only.
 
 Logitech receiver devices are the one case where the app sends anything: every two minutes it asks the device for its
 battery level using Logitech's own message format. It never changes a device setting, and the gear panel has a switch
-to turn this off. Settings and history are plain JSON files in `%LOCALAPPDATA%\BTBatteryIndicator`.
+to turn this off. Settings and history are plain JSON files in `%LOCALAPPDATA%\WirelessDeviceMonitor`.
 
 The app contains no network code and uses no third-party packages: only .NET and Windows' own interfaces.
 
@@ -119,7 +120,7 @@ The app contains no network code and uses no third-party packages: only .NET and
 | `docs/DOWNLOADS.md` | Everything the build downloads: source, version, licence, checksum. |
 | `build.ps1`, `install.ps1` | Build, test, package and install. |
 
-`BTBatteryIndicator.slnx` opens all three projects in Visual Studio or Rider.
+`WirelessDeviceMonitor.slnx` opens all three projects in Visual Studio or Rider.
 
 ## License
 

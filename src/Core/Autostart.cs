@@ -1,9 +1,9 @@
 using Microsoft.Win32;
 
-namespace BTBatteryIndicator.Core;
+namespace WirelessDeviceMonitor.Core;
 
 /// <summary>R9: per-user "start with Windows" via the HKCU Run key. No admin rights involved.</summary>
-public sealed class Autostart(string keyPath = Autostart.RunKey, string valueName = "BTBatteryIndicator")
+public sealed class Autostart(string keyPath = Autostart.RunKey, string valueName = "WirelessDeviceMonitor")
 {
     public const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     public const string QuietArg = "--tray";
