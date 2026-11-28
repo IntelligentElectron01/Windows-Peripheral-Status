@@ -45,6 +45,25 @@ if (args.Length > 0 && args[0] == "pods")
     return 0;
 }
 
+if (args.Length > 1 && args[0] == "record")
+{
+    // Developer tool: writes every earbud broadcast heard, unprocessed, to a file (time, signal, bytes) for the
+    // given number of minutes. Receive-only, like "pods". Used to study what the broadcast really carries.
+    double minutes = args.Length > 2 ? double.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 60;
+    using var file = new StreamWriter(args[1], append: true) { AutoFlush = true };
+    BlePodsListener.Raw = (bytes, rssi) => { lock (file) file.WriteLine($"{DateTime.Now:HH:mm:ss.fff},{rssi},{Convert.ToHexString(bytes)}"); };
+    var recorder = new BlePodsListener();
+    var end = DateTime.UtcNow.AddMinutes(minutes);
+    while (DateTime.UtcNow < end)
+    {
+        await recorder.ListenAsync(TimeSpan.FromSeconds(3));
+        await Task.Delay(500);
+    }
+    BlePodsListener.Raw = null;
+    lock (file) Console.WriteLine($"done; error: {recorder.LastError ?? "none"}");
+    return 0;
+}
+
 if (args.Length > 0 && args[0] == "links")
 {
     // Lists, per paired device, how many Windows audio connections it has (what click-to-connect would use). Sends nothing.

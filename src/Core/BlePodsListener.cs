@@ -137,6 +137,9 @@ public sealed class BlePodsListener : IPodsListener
     public static int Callbacks, Entries, AppleEntries;
     public static string Diagnostic = "";
 
+    /// <summary>Developer tool: receives every earbud broadcast exactly as it arrived (bytes, signal strength).</summary>
+    public static Action<byte[], int>? Raw;
+
     static unsafe void OnReceived(IntPtr args)
     {
         Interlocked.Increment(ref Callbacks);
@@ -195,6 +198,7 @@ public sealed class BlePodsListener : IPodsListener
                 byte* bytes = stackalloc byte[(int)length];
                 int h4 = ((delegate* unmanaged[Stdcall]<IntPtr, uint, byte*, int>)Slot(reader, 14))(reader, length, bytes); // ReadBytes
                 if (h4 < 0) { Diagnostic = $"ReadBytes 0x{h4:X8}"; return; }
+                if (Raw is { } raw && bytes[0] == 0x07) raw(new ReadOnlySpan<byte>(bytes, (int)length).ToArray(), rssi);
                 var levels = ApplePods.Parse(new ReadOnlySpan<byte>(bytes, (int)length));
                 if (levels is null) return;
                 lock (Gate)
