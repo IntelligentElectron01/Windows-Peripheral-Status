@@ -181,7 +181,7 @@ public partial class FlyoutWindow : Window
             Name = name,
             Glyph = d is { Connected: true, Pods: not null } ? "" : GlyphFor(d.Kind),
             Icon = d is { Connected: true, Pods: { } shown } ? PodIcons.For(shown.View) : null,
-            LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? pods.Short()
+            LevelText = !d.Connected ? "Not connected" : d.Pods is { } pods ? (pods.LeftCharging || pods.RightCharging ? "⚡ " : "") + pods.Short()
                       : d.Charging && d.Battery is not null ? $"⚡ {d.Battery}%" : Levels.Text(d.Battery),
             Level = live ? d.Battery!.Value : 0,
             BarVisibility = live ? Visibility.Visible : Visibility.Collapsed,

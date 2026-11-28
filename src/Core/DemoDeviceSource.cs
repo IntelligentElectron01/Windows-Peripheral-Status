@@ -6,7 +6,7 @@ public sealed class DemoDeviceSource : IDeviceSource
     readonly List<DeviceReading> _devices =
     [
         new("DEMO00000001", "Demo Keyboard", DeviceKind.Keyboard, true, 76),
-        new("DEMO00000002", "Demo Mouse", DeviceKind.Mouse, true, 55),
+        new("DEMO00000002", "Demo Mouse", DeviceKind.Mouse, true, 55) { Charging = true },
         new("DEMO00000003", "Demo Headphones", DeviceKind.Headphones, true, 24),
         new("DEMO00000004", "Demo Speaker", DeviceKind.Speaker, true, null),
         new("DEMO00000005", "Demo Earbuds", DeviceKind.Headphones, true, 70) { Pods = new PodLevels(0, 70, 80, null, LeftInEar: true, RightInEar: true) },

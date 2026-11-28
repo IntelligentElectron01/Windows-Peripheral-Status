@@ -15,6 +15,7 @@ Everything stays on your PC: no account, no ads, no telemetry, no network access
 - Click a connected Bluetooth audio device on the taskbar strip to move the sound to it
 - A popup whenever Windows' sound output or microphone changes, however it was changed
 - Connect or disconnect Bluetooth headphones, earbuds and speakers from the device menu (they stay paired)
+- A lightning bolt on the gauge while a device is charging (for devices that report it)
 - 7-day battery history chart with a time-left estimate
 - Rename or hide devices; light and dark theme; optional start with Windows
 

@@ -178,15 +178,15 @@ public sealed class TaskbarStrip : Window
             // one bud when only one is being worn, left and right separately when they differ.
             switch (pods.View)
             {
-                case PodView.Pair: Gauge(row, PodIcons.Element(PodIcons.Pair, fg), pods.Primary, fg); break;
-                case PodView.Left: Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg); break;
-                case PodView.Right: Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg); break;
+                case PodView.Pair: Gauge(row, PodIcons.Element(PodIcons.Pair, fg), pods.Primary, fg, charging: pods.LeftCharging || pods.RightCharging); break;
+                case PodView.Left: Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg, charging: pods.LeftCharging); break;
+                case PodView.Right: Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, charging: pods.RightCharging); break;
                 case PodView.Separate:
-                    Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg);
-                    Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12);
+                    Gauge(row, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg, charging: pods.LeftCharging);
+                    Gauge(row, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12, charging: pods.RightCharging);
                     break;
             }
-            if (pods.ShowCase) Gauge(row, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12);
+            if (pods.ShowCase) Gauge(row, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12, charging: pods.CaseCharging);
             row.ToolTip = Tip($"{name}: {pods.Describe()}");
             return row;
         }
@@ -198,7 +198,7 @@ public sealed class TaskbarStrip : Window
             FontSize = 15, Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
         };
         bool connecting = _c.IsConnecting(id);
-        Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg, placeholder: connecting ? "…" : "–");
+        Gauge(row, glyph, d is { Connected: true } ? d.Battery : null, fg, placeholder: connecting ? "…" : "–", charging: d is { Connected: true, Charging: true });
         row.ToolTip = Tip(connecting ? $"{name}: connecting…"
             : d is { SleepsWhenIdle: true } || id.StartsWith("LOGI", StringComparison.Ordinal) ? $"{name}: asleep or switched off. Move it to wake it."
             : d is null || !d.Connected ? $"{name}: not connected. Click to try to connect."
@@ -217,7 +217,7 @@ public sealed class TaskbarStrip : Window
     };
 
     /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
-    internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–")
+    internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–", bool charging = false)
     {
         bool live = level is not null;
         var levelBrush = Theme.Brush(Theme.BandColor(Levels.Band(level)));
@@ -238,7 +238,24 @@ public sealed class TaskbarStrip : Window
         };
         var nub = new Border { Width = 2, Height = 5, CornerRadius = new CornerRadius(0, 1, 1, 0), Background = fg, VerticalAlignment = VerticalAlignment.Center, Opacity = live ? 1 : 0.5 };
         var battery = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        battery.Children.Add(body);
+        if (charging && live)
+        {
+            // A lightning bolt across the battery, as phones show it. It is drawn in the text colour with a thin
+            // edge in the opposite shade, so it stands out from both the coloured fill and the empty part.
+            bool lightText = fg is SolidColorBrush { Color: var c } && c.R + c.G + c.B > 380;
+            var bolt = new System.Windows.Shapes.Path
+            {
+                Data = BoltShape, Fill = fg, Stretch = Stretch.Uniform, Height = 13,
+                Stroke = Theme.Brush(lightText ? Color.FromArgb(0xE0, 0x10, 0x10, 0x10) : Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF)),
+                StrokeThickness = 1, StrokeLineJoin = PenLineJoin.Round,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            };
+            var both = new Grid();
+            both.Children.Add(body);
+            both.Children.Add(bolt);
+            battery.Children.Add(both);
+        }
+        else battery.Children.Add(body);
         battery.Children.Add(nub);
 
         var text = new TextBlock
@@ -249,6 +266,15 @@ public sealed class TaskbarStrip : Window
         row.Children.Add(icon);
         row.Children.Add(battery);
         row.Children.Add(text);
+    }
+
+    static readonly Geometry BoltShape = MakeBolt();
+
+    static Geometry MakeBolt()
+    {
+        var g = Geometry.Parse("M 6.2,0 L 0,8.2 L 4.1,8.2 L 2.9,14 L 9.6,5.4 L 5.5,5.4 Z");
+        g.Freeze();
+        return g;
     }
 
     /// <summary>Which pinned device's item a click landed on.</summary>

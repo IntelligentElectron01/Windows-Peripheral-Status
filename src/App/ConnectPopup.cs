@@ -301,18 +301,18 @@ public sealed class ConnectPopup : Window
         {
             switch (pods.View)
             {
-                case PodView.Pair: TaskbarStrip.Gauge(levels, new Border(), pods.Primary, fg); break;
-                case PodView.Left: TaskbarStrip.Gauge(levels, new Border(), pods.Left, fg); break;
-                case PodView.Right: TaskbarStrip.Gauge(levels, new Border(), pods.Right, fg); break;
+                case PodView.Pair: TaskbarStrip.Gauge(levels, new Border(), pods.Primary, fg, charging: pods.LeftCharging || pods.RightCharging); break;
+                case PodView.Left: TaskbarStrip.Gauge(levels, new Border(), pods.Left, fg, charging: pods.LeftCharging); break;
+                case PodView.Right: TaskbarStrip.Gauge(levels, new Border(), pods.Right, fg, charging: pods.RightCharging); break;
                 case PodView.Separate:
-                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg);
-                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12);
+                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg, charging: pods.LeftCharging);
+                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12, charging: pods.RightCharging);
                     break;
             }
-            if (pods.ShowCase) TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12);
+            if (pods.ShowCase) TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12, charging: pods.CaseCharging);
         }
         else if (d.Battery is int level)
-            TaskbarStrip.Gauge(levels, new Border(), level, fg);
+            TaskbarStrip.Gauge(levels, new Border(), level, fg, charging: d.Charging);
 
         _row.Children.Clear();
         _row.Children.Add(icon);
