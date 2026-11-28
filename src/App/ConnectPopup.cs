@@ -153,6 +153,8 @@ public sealed class ConnectPopup : Window
 
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
+    static readonly Color PillColour = Color.FromRgb(0x0B, 0x0B, 0x0C);
+
     const double Headroom = 140; // how much of the window sits above the top of the screen
     const double Travel = 96;   // how far above its resting place the pill starts and ends
 
@@ -198,7 +200,7 @@ public sealed class ConnectPopup : Window
 
         _pill = new Border
         {
-            Background = Theme.Brush(Color.FromRgb(0x0B, 0x0B, 0x0C)),
+            Background = Theme.Brush(PillColour),
             BorderBrush = Theme.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(27),
@@ -301,18 +303,18 @@ public sealed class ConnectPopup : Window
         {
             switch (pods.View)
             {
-                case PodView.Pair: TaskbarStrip.Gauge(levels, new Border(), pods.Primary, fg, charging: pods.LeftCharging || pods.RightCharging); break;
-                case PodView.Left: TaskbarStrip.Gauge(levels, new Border(), pods.Left, fg, charging: pods.LeftCharging); break;
-                case PodView.Right: TaskbarStrip.Gauge(levels, new Border(), pods.Right, fg, charging: pods.RightCharging); break;
+                case PodView.Pair: TaskbarStrip.Gauge(levels, new Border(), pods.Primary, fg, charging: pods.LeftCharging || pods.RightCharging, backdrop: PillColour); break;
+                case PodView.Left: TaskbarStrip.Gauge(levels, new Border(), pods.Left, fg, charging: pods.LeftCharging, backdrop: PillColour); break;
+                case PodView.Right: TaskbarStrip.Gauge(levels, new Border(), pods.Right, fg, charging: pods.RightCharging, backdrop: PillColour); break;
                 case PodView.Separate:
-                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg, charging: pods.LeftCharging);
-                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12, charging: pods.RightCharging);
+                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Left, fg), pods.Left, fg, charging: pods.LeftCharging, backdrop: PillColour);
+                    TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Right, fg), pods.Right, fg, gapBefore: 12, charging: pods.RightCharging, backdrop: PillColour);
                     break;
             }
-            if (pods.ShowCase) TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12, charging: pods.CaseCharging);
+            if (pods.ShowCase) TaskbarStrip.Gauge(levels, PodIcons.Element(PodIcons.Case, fg, 13), pods.Case, fg, gapBefore: 12, charging: pods.CaseCharging, backdrop: PillColour);
         }
         else if (d.Battery is int level)
-            TaskbarStrip.Gauge(levels, new Border(), level, fg, charging: d.Charging);
+            TaskbarStrip.Gauge(levels, new Border(), level, fg, charging: d.Charging, backdrop: PillColour);
 
         _row.Children.Clear();
         _row.Children.Add(icon);

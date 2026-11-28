@@ -217,7 +217,7 @@ public sealed class TaskbarStrip : Window
     };
 
     /// <summary>Adds "icon, battery gauge, percentage" to a row. A null level draws an empty, dimmed gauge.</summary>
-    internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–", bool charging = false)
+    internal static void Gauge(StackPanel row, FrameworkElement icon, int? level, Brush fg, double gapBefore = 0, string placeholder = "–", bool charging = false, Color? backdrop = null)
     {
         bool live = level is not null;
         var levelBrush = Theme.Brush(Theme.BandColor(Levels.Band(level)));
@@ -240,14 +240,16 @@ public sealed class TaskbarStrip : Window
         var battery = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         if (charging && live)
         {
-            // A lightning bolt across the battery, as phones show it. It is drawn in the text colour with a thin
-            // edge in the opposite shade, so it stands out from both the coloured fill and the empty part.
+            // The way phones show it: the fill turns green, and a lightning bolt a little taller than the battery
+            // sits across it. The bolt is in the text colour with a gap in the backdrop's colour cut around it, so
+            // it reads cleanly against the fill, the outline and the empty part alike.
             bool lightText = fg is SolidColorBrush { Color: var c } && c.R + c.G + c.B > 380;
+            fill.Background = Theme.Brush(lightText ? Color.FromRgb(0x30, 0xD1, 0x58) : Color.FromRgb(0x1F, 0xA8, 0x45));
             var bolt = new System.Windows.Shapes.Path
             {
-                Data = BoltShape, Fill = fg, Stretch = Stretch.Uniform, Height = 13,
-                Stroke = Theme.Brush(lightText ? Color.FromArgb(0xE0, 0x10, 0x10, 0x10) : Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF)),
-                StrokeThickness = 1, StrokeLineJoin = PenLineJoin.Round,
+                Data = BoltShape, Fill = fg, Stretch = Stretch.Uniform, Height = 19, Margin = new Thickness(0, -3, 0, -3),
+                Stroke = Theme.Brush(backdrop ?? (lightText ? Color.FromRgb(0x1C, 0x1C, 0x1C) : Color.FromRgb(0xF6, 0xF6, 0xF6))),
+                StrokeThickness = 1.6, StrokeLineJoin = PenLineJoin.Round,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             };
             var both = new Grid();
@@ -272,7 +274,8 @@ public sealed class TaskbarStrip : Window
 
     static Geometry MakeBolt()
     {
-        var g = Geometry.Parse("M 6.2,0 L 0,8.2 L 4.1,8.2 L 2.9,14 L 9.6,5.4 L 5.5,5.4 Z");
+        // A broad, slanted bolt: upper blade, a step in the middle, lower blade.
+        var g = Geometry.Parse("M 7.4,0 L 0.6,9.4 L 4.9,9.4 L 3.1,17 L 10.4,7.0 L 6.0,7.0 Z");
         g.Freeze();
         return g;
     }
