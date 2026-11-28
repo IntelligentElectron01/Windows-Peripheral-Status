@@ -106,8 +106,21 @@ public partial class App : Application
             string traceFile = Path.Combine(dataDir, "strip-trace.txt");
             File.WriteAllText(traceFile, "");
             var traceClock = System.Diagnostics.Stopwatch.StartNew();
-            var traceLock = new object();
-            TaskbarStrip.Trace = line => { lock (traceLock) File.AppendAllText(traceFile, $"{traceClock.ElapsedMilliseconds,7} | {line}\n"); };
+            // Lines are only queued here and written by a background thread, so tracing does not itself slow
+            // down the thread it is timing.
+            var pending = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            TaskbarStrip.Trace = line => pending.Enqueue($"{traceClock.ElapsedMilliseconds,7} | {line}\n");
+            new Thread(() =>
+            {
+                var text = new System.Text.StringBuilder();
+                while (true)
+                {
+                    Thread.Sleep(500);
+                    text.Clear();
+                    while (pending.TryDequeue(out string? line)) text.Append(line);
+                    if (text.Length > 0) File.AppendAllText(traceFile, text.ToString());
+                }
+            }) { IsBackground = true, Name = "strip-trace" }.Start();
         }
         if (args.Contains("--memlog"))
         {

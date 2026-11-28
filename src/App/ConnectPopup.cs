@@ -109,14 +109,41 @@ public sealed class ConnectPopup : Window
         // mostly see-through, and its class name differs between Windows versions. Whatever it is called, a
         // window that belongs to Windows' own shell is not an app covering the screen.
         GetWindowThreadProcessId(front, out uint pid);
-        try
-        {
-            using var owner = System.Diagnostics.Process.GetProcessById((int)pid);
-            if (ShellProcesses.Contains(owner.ProcessName)) return false;
-        }
-        catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
-        return true;
+        return !IsShellProcess(pid);
     }
+
+    /// <summary>
+    /// Whether a program is part of Windows' own shell. Looked up once per program and remembered: this is asked
+    /// many times a second while a full-screen app is in front, and looking a program's name up is slow enough
+    /// (it lists every running program) to hold up the strip when the taskbar starts to move.
+    /// </summary>
+    static bool IsShellProcess(uint pid)
+    {
+        lock (ShellAnswers)
+        {
+            if (ShellAnswers.TryGetValue(pid, out bool known)) return known;
+            bool shell = false;
+            IntPtr process = OpenProcess(0x1000 /* query limited information */, false, pid);
+            if (process != IntPtr.Zero)
+            {
+                try
+                {
+                    var path = new System.Text.StringBuilder(520);
+                    int length = path.Capacity;
+                    if (QueryFullProcessImageNameW(process, 0, path, ref length))
+                        shell = ShellProcesses.Contains(System.IO.Path.GetFileNameWithoutExtension(path.ToString()));
+                }
+                finally { CloseHandle(process); }
+            }
+            if (ShellAnswers.Count > 64) ShellAnswers.Clear();
+            return ShellAnswers[pid] = shell;
+        }
+    }
+
+    static readonly Dictionary<uint, bool> ShellAnswers = new();
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, System.Text.StringBuilder path, ref int length);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
 
     static readonly HashSet<string> ShellProcesses = new(StringComparer.OrdinalIgnoreCase)
     {
